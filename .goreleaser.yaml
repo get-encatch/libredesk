@@ -1,8 +1,8 @@
 env:
   - GO111MODULE=on
   - CGO_ENABLED=0
-  - GITHUB_ORG=abhinavxd
-  - DOCKER_ORG=libredesk
+  # encatch: publish to our fork's GHCR only (no Docker Hub).
+  - GITHUB_ORG=get-encatch
 
 before:
   hooks:
@@ -57,8 +57,6 @@ dockers:
     ids:
       - universal
     image_templates:
-      - "{{ .Env.DOCKER_ORG }}/{{ .ProjectName }}:latest-amd64"
-      - "{{ .Env.DOCKER_ORG }}/{{ .ProjectName }}:{{ .Tag }}-amd64"
       - "ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:latest-amd64"
       - "ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:{{ .Tag }}-amd64"
     build_flag_templates:
@@ -81,8 +79,6 @@ dockers:
     ids:
       - universal
     image_templates:
-      - "{{ .Env.DOCKER_ORG }}/{{ .ProjectName }}:latest-arm64"
-      - "{{ .Env.DOCKER_ORG }}/{{ .ProjectName }}:{{ .Tag }}-arm64"
       - "ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:latest-arm64"
       - "ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:{{ .Tag }}-arm64"
     build_flag_templates:
@@ -106,8 +102,6 @@ dockers:
     ids:
       - universal
     image_templates:
-      - "{{ .Env.DOCKER_ORG }}/{{ .ProjectName }}:latest-armv6"
-      - "{{ .Env.DOCKER_ORG }}/{{ .ProjectName }}:{{ .Tag }}-armv6"
       - "ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:latest-armv6"
       - "ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:{{ .Tag }}-armv6"
     build_flag_templates:
@@ -131,8 +125,6 @@ dockers:
     ids:
       - universal
     image_templates:
-      - "{{ .Env.DOCKER_ORG }}/{{ .ProjectName }}:latest-armv7"
-      - "{{ .Env.DOCKER_ORG }}/{{ .ProjectName }}:{{ .Tag }}-armv7"
       - "ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:latest-armv7"
       - "ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:{{ .Tag }}-armv7"
     build_flag_templates:
@@ -150,18 +142,6 @@ dockers:
       - config.sample.toml
 
 docker_manifests:
-  - name_template: "{{ .Env.DOCKER_ORG }}/{{ .ProjectName }}:latest"
-    image_templates:
-      - "{{ .Env.DOCKER_ORG }}/{{ .ProjectName }}:latest-amd64"
-      - "{{ .Env.DOCKER_ORG }}/{{ .ProjectName }}:latest-arm64"
-      - "{{ .Env.DOCKER_ORG }}/{{ .ProjectName }}:latest-armv6"
-      - "{{ .Env.DOCKER_ORG }}/{{ .ProjectName }}:latest-armv7"
-  - name_template: "{{ .Env.DOCKER_ORG }}/{{ .ProjectName }}:{{ .Tag }}"
-    image_templates:
-      - "{{ .Env.DOCKER_ORG }}/{{ .ProjectName }}:{{ .Tag }}-amd64"
-      - "{{ .Env.DOCKER_ORG }}/{{ .ProjectName }}:{{ .Tag }}-arm64"
-      - "{{ .Env.DOCKER_ORG }}/{{ .ProjectName }}:{{ .Tag }}-armv6"
-      - "{{ .Env.DOCKER_ORG }}/{{ .ProjectName }}:{{ .Tag }}-armv7"
   - name_template: ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:latest
     image_templates:
       - ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:latest-amd64
@@ -177,7 +157,8 @@ docker_manifests:
 
 release:
   github:
-    owner: abhinavxd
+    owner: get-encatch
     name: libredesk
-  prerelease: auto
+  # encatch: vX.Y.Z-encatch.N tags are our releases, not pre-releases.
+  prerelease: false
   draft: true

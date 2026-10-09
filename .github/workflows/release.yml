@@ -3,7 +3,8 @@ name: Release
 on:
   push:
     tags:
-      - "v*"
+      # encatch: only build our own tags, not upstream tags synced into the fork.
+      - "v*-encatch.*"
 
 jobs:
   release:
@@ -23,12 +24,6 @@ jobs:
           driver: docker-container
           cache-to: type=gha
           cache-from: type=gha
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -67,5 +62,4 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DOCKER_ORG: libredesk
           GITHUB_ORG: ${{ github.repository_owner }}

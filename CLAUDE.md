@@ -30,3 +30,10 @@ This repo is **get-encatch/libredesk**, the Encatch (CMSS) fork of [abhinavxd/li
 - Keep `LICENSE` and the upstream copyright notices. All code in this repo is AGPL-3.0.
 - Keep a visible note that this is a modified version of libredesk (README, and ideally a source link in the app).
 - Encatch services that only talk to libredesk over its API or webhooks are separate works. Code merged into this repo or binary is AGPL.
+
+## Releases and container images
+
+- Images are published only to GitHub Container Registry: `ghcr.io/get-encatch/libredesk` (amd64, arm64, armv6, armv7). There is no Docker Hub publishing.
+- Release by tagging `encatch/main` as `vX.Y.Z-encatch.N`, where `X.Y.Z` is the upstream version we're based on, e.g. `v2.8.0-encatch.1`. Never reuse a plain upstream tag name.
+- Pushing such a tag runs `.github/workflows/release.yml` (GoReleaser). It pushes the images and creates a **draft** GitHub Release that someone publishes by hand. Plain upstream tags (`vX.Y.Z`) don't trigger it.
+- Our edits to `.goreleaser.yaml` and `release.yml` are marked `# encatch:`. Expect small conflicts there when merging upstream releases, and keep our version (GHCR only, `get-encatch` owner).
