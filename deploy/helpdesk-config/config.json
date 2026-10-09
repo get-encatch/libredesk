@@ -85,10 +85,11 @@
     "Enterprise",
     "Urgent"
   ],
-  "_tiers_comment": "Priority -> SLA policy per tier. Tiers without a 'priorities' map get one SLA whatever the priority.",
+  "_tiers_comment": "Priority -> SLA policy per tier. Tiers without a 'priorities' map get one SLA whatever the priority. 'domains' (optional): company email domains, e.g. [\"bigcorp.com\"], that put a contact in the tier even without the Support tier field set. Never list shared domains like gmail.com.",
   "tiers": [
     {
       "name": "Growth Plus",
+      "domains": [],
       "tags": [],
       "priorities": {
         "Low": "Priority support - Normal",
@@ -99,6 +100,7 @@
     },
     {
       "name": "Enterprise Standard",
+      "domains": [],
       "tags": [
         "enterprise"
       ],
@@ -111,6 +113,7 @@
     },
     {
       "name": "Enterprise Premium",
+      "domains": [],
       "tags": [
         "enterprise",
         "vip"
@@ -124,6 +127,7 @@
     },
     {
       "name": "SaaS Growth",
+      "domains": [],
       "tags": [],
       "sla": "SaaS Growth"
     },
@@ -145,39 +149,39 @@
       "[EXPRESS]"
     ]
   },
-  "_macros_comment": "Canned replies (macros), visible to everyone when replying. 'set_status' is applied in the same click. Placeholders: {{ .Contact.FirstName }}, {{ .Author.FirstName }}, {{ .Conversation.ReferenceNumber }}.",
+  "_macros_comment": "Canned replies (macros), visible to everyone when replying. 'set_status' is applied in the same click. Greetings avoid the contact's name: contacts without one get their email prefix as a name. Placeholders: {{ .Author.FirstName }}, {{ .Conversation.ReferenceNumber }}.",
   "macros": [
     {
       "name": "Acknowledge",
-      "message": "<p>Hi {{ if .Contact.FirstName }}{{ .Contact.FirstName }}{{ else }}there{{ end }},</p><p>Thanks for reaching out to Encatch Support. We've received your request and someone from the team is looking into it. We'll get back to you shortly.</p><p>Best,<br>{{ .Author.FirstName }}<br>Encatch Support</p>"
+      "message": "<p>Hi,</p><p>Thanks for reaching out to Encatch Support. We've received your request and someone from the team is looking into it. We'll get back to you shortly.</p><p>Best,<br>{{ .Author.FirstName }}<br>Encatch Support</p>"
     },
     {
       "name": "Ask for bug details",
-      "message": "<p>Hi {{ if .Contact.FirstName }}{{ .Contact.FirstName }}{{ else }}there{{ end }},</p><p>Thanks for reporting this. To help us reproduce it quickly, could you share:</p><ul><li>Your workspace or project ID</li><li>The SDK and version (e.g. Web, React Native, Flutter, iOS, Android) and the platform or browser</li><li>The form name or ID</li><li>Steps to reproduce, and what you expected vs what happened</li><li>Screenshots or a screen recording, if possible</li></ul><p>Once we have these we'll dig in right away.</p><p>Best,<br>{{ .Author.FirstName }}<br>Encatch Support</p>",
+      "message": "<p>Hi,</p><p>Thanks for reporting this. To help us reproduce it quickly, could you share:</p><ul><li>Your workspace or project ID</li><li>The SDK and version (e.g. Web, React Native, Flutter, iOS, Android) and the platform or browser</li><li>The form name or ID</li><li>Steps to reproduce, and what you expected vs what happened</li><li>Screenshots or a screen recording, if possible</li></ul><p>Once we have these we'll dig in right away.</p><p>Best,<br>{{ .Author.FirstName }}<br>Encatch Support</p>",
       "set_status": "Waiting on customer"
     },
     {
       "name": "Escalated to engineering",
-      "message": "<p>Hi {{ if .Contact.FirstName }}{{ .Contact.FirstName }}{{ else }}there{{ end }},</p><p>Thanks for your patience. We've reproduced the issue and passed it to our engineering team. We'll keep you updated and let you know as soon as a fix is available.</p><p>Best,<br>{{ .Author.FirstName }}<br>Encatch Support</p>",
+      "message": "<p>Hi,</p><p>Thanks for your patience. We've reproduced the issue and passed it to our engineering team. We'll keep you updated and let you know as soon as a fix is available.</p><p>Best,<br>{{ .Author.FirstName }}<br>Encatch Support</p>",
       "set_status": "Waiting on engineering"
     },
     {
       "name": "Feature request logged",
-      "message": "<p>Hi {{ if .Contact.FirstName }}{{ .Contact.FirstName }}{{ else }}there{{ end }},</p><p>Thanks for the suggestion! We've logged it with our product team. We can't promise a timeline, but requests like this directly shape what we build next.</p><p>Best,<br>{{ .Author.FirstName }}<br>Encatch Support</p>",
+      "message": "<p>Hi,</p><p>Thanks for the suggestion! We've logged it with our product team. We can't promise a timeline, but requests like this directly shape what we build next.</p><p>Best,<br>{{ .Author.FirstName }}<br>Encatch Support</p>",
       "set_status": "Resolved"
     },
     {
       "name": "Billing handover",
-      "message": "<p>Hi {{ if .Contact.FirstName }}{{ .Contact.FirstName }}{{ else }}there{{ end }},</p><p>Thanks for getting in touch. I've passed your question to our billing team, who will follow up with you directly.</p><p>Best,<br>{{ .Author.FirstName }}<br>Encatch Support</p>"
+      "message": "<p>Hi,</p><p>Thanks for getting in touch. I've passed your question to our billing team, who will follow up with you directly.</p><p>Best,<br>{{ .Author.FirstName }}<br>Encatch Support</p>"
     },
     {
       "name": "Resolved - anything else?",
-      "message": "<p>Hi {{ if .Contact.FirstName }}{{ .Contact.FirstName }}{{ else }}there{{ end }},</p><p>Glad we could sort this out. If anything else comes up, just reply to this email and the conversation will reopen.</p><p>Best,<br>{{ .Author.FirstName }}<br>Encatch Support</p>",
+      "message": "<p>Hi,</p><p>Glad we could sort this out. If anything else comes up, just reply to this email and the conversation will reopen.</p><p>Best,<br>{{ .Author.FirstName }}<br>Encatch Support</p>",
       "set_status": "Resolved"
     },
     {
       "name": "Closing (no response)",
-      "message": "<p>Hi {{ if .Contact.FirstName }}{{ .Contact.FirstName }}{{ else }}there{{ end }},</p><p>We haven't heard back from you, so we're closing this conversation for now. If you still need help, just reply to this email and it will reopen.</p><p>Best,<br>{{ .Author.FirstName }}<br>Encatch Support</p>",
+      "message": "<p>Hi,</p><p>We haven't heard back from you, so we're closing this conversation for now. If you still need help, just reply to this email and it will reopen.</p><p>Best,<br>{{ .Author.FirstName }}<br>Encatch Support</p>",
       "set_status": "Resolved"
     }
   ]

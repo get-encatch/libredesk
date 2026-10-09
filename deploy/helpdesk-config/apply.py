@@ -46,11 +46,12 @@ def cond(field, operator, value="", field_type="conversation"):
             "case_sensitive_match": False}
 
 
-def rule_body(conditions, actions, any_of=None):
-    """conditions: list ANDed together (group 1). any_of: optional list ORed together (group 2), ANDed with group 1."""
-    groups = [{"logical_op": "AND", "rules": conditions},
-              {"logical_op": "OR", "rules": any_of or []}]
-    return [{"groups": groups, "actions": actions, "group_operator": "AND" if any_of else "OR"}]
+def rule_body(match_any, actions, and_any=None):
+    """match_any: conditions ORed together (group 1). and_any: optional conditions ORed
+    together (group 2) that must also match (groups are ANDed)."""
+    groups = [{"logical_op": "OR", "rules": match_any},
+              {"logical_op": "OR", "rules": and_any or []}]
+    return [{"groups": groups, "actions": actions, "group_operator": "AND" if and_any else "OR"}]
 
 
 def main():
@@ -102,6 +103,11 @@ def main():
     def tier_is(t):
         return cond(tier_key, "equals", t, "contact_custom_attribute")
 
+    def in_tier(t):
+        """Contact is in tier t: Support tier field set to t, or email at one of the tier's domains."""
+        return [tier_is(t["name"])] + [cond("contact_email", "contains", "@" + d.lstrip("@").lower())
+                                       for d in t.get("domains", [])]
+
     def actions(sla_name, priority=None, tags=()):
         acts = [{"type": "set_sla", "value": [sla[sla_name]]}]
         if priority:
@@ -119,30 +125,27 @@ def main():
                 kw = [cond("subject", "contains", k) for k in cfg["subject_tags"][level]]
                 new_rules.append(("%s new: %s, %s subject tag" % (RULE_PREFIX, name, level),
                                   "New %s ticket with a %s subject tag: %s priority, %s SLA." % (name, " / ".join(cfg["subject_tags"][level]), level, prios[level]),
-                                  rule_body([tier_is(name)], actions(prios[level], level, tags), any_of=kw)))
+                                  rule_body(in_tier(t), actions(prios[level], level, tags), and_any=kw)))
             new_rules.append(("%s new: %s" % (RULE_PREFIX, name),
                               "New %s ticket: Medium priority, %s SLA." % (name, prios["Medium"]),
-                              rule_body([tier_is(name)], actions(prios["Medium"], "Medium", tags))))
+                              rule_body(in_tier(t), actions(prios["Medium"], "Medium", tags))))
             # Priority change: apply the tier's SLA for the new priority.
             for level, sla_name in prios.items():
                 update_rules.append(("%s priority: %s, %s" % (RULE_PREFIX, name, level),
                                      "%s ticket set to %s priority: %s SLA." % (name, level, sla_name),
-                                     rule_body([tier_is(name), cond("priority", "equals", prio[level])], actions(sla_name))))
+                                     rule_body(in_tier(t), actions(sla_name), and_any=[cond("priority", "equals", prio[level])])))
         else:
-            conds = [tier_is(name)]
-            any_of = None
+            match = in_tier(t)
             if t.get("catch_all"):
-                conds, any_of = [], [cond(tier_key, "not set", "", "contact_custom_attribute"), tier_is(name)]
+                match = [cond(tier_key, "not set", "", "contact_custom_attribute")] + match
             new_rules.append(("%s new: %s" % (RULE_PREFIX, name),
                               "New %s ticket%s: Medium priority, %s SLA." % (name, " (or no tier recorded)" if t.get("catch_all") else "", t["sla"]),
-                              rule_body(conds, actions(t["sla"], "Medium", tags), any_of=any_of) if conds else
-                              [{"groups": [{"logical_op": "OR", "rules": any_of}, {"logical_op": "OR", "rules": []}],
-                                "actions": actions(t["sla"], "Medium", tags), "group_operator": "OR"}]))
+                              rule_body(match, actions(t["sla"], "Medium", tags))))
             if not t.get("catch_all"):
                 # Re-apply on priority change, for tickets whose tier was recorded after they arrived.
                 update_rules.append(("%s priority: %s" % (RULE_PREFIX, name),
                                      "%s ticket priority changed: re-apply %s SLA (catches tier recorded late)." % (name, t["sla"]),
-                                     rule_body([tier_is(name)], actions(t["sla"]))))
+                                     rule_body(in_tier(t), actions(t["sla"]))))
 
     # 5. Sync rules (owned = name starts with RULE_PREFIX).
     current = {}

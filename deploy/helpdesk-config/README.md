@@ -17,7 +17,10 @@ All times are **business hours** on the desk's default business hours
 | Enterprise Standard | 24h | 24h | 8h | 2h |
 | Enterprise Premium | 16h | 8h | 2h | 30m |
 
-- The tier comes from the contact field **Support tier** (key `plan`). No tier recorded = SaaS Standard.
+- A contact is in a tier if its **Support tier** field (key `plan`) is set to it, **or** its
+  email is at one of the tier's `domains` in `config.json` (e.g. `"domains": ["bigcorp.com"]`).
+  Domains cover everyone at a company, including first-time contacts. Never list shared
+  domains like `gmail.com`. No tier and no domain match = SaaS Standard.
 - **New tickets:** the first matching rule sets the SLA and starting priority. For Growth
   Plus and both Enterprise tiers, a subject tag sets the starting priority:
   `[URGENT]`/`[PRIORITY]` → Urgent, `[HIGH]`/`[EXPRESS]` → High, otherwise Medium.
@@ -39,8 +42,9 @@ All times are **business hours** on the desk's default business hours
 | Resolved - anything else? | Resolved |
 | Closing (no response) | Resolved |
 
-Message placeholders are filled in when the reply is sent: `{{ .Contact.FirstName }}`,
-`{{ .Author.FirstName }}`, `{{ .Conversation.ReferenceNumber }}`. Macros are matched
+Greetings are a neutral "Hi,": contacts that email without a display name get their email
+prefix (e.g. "rahul.gorad") as a first name. Placeholders available when the reply is sent:
+`{{ .Author.FirstName }}`, `{{ .Conversation.ReferenceNumber }}`, `{{ .Contact.FirstName }}`. Macros are matched
 by name; macros not in the config are left alone.
 
 ## Running it
