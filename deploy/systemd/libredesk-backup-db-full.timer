@@ -1,0 +1,10 @@
+[Unit]
+Description=Weekly full Postgres backup (Sun 02:00 IST)
+
+[Timer]
+OnCalendar=Sun *-*-* 02:00:00 Asia/Kolkata
+Unit=libredesk-backup-db@full.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,10 @@
+[Unit]
+Description=Monthly backup restore test (first Sunday, 04:00 IST)
+
+[Timer]
+OnCalendar=Sun *-*-01..07 04:00:00 Asia/Kolkata
+Unit=libredesk-restore-test.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

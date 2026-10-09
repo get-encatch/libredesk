@@ -1,0 +1,10 @@
+[Unit]
+Description=6-hourly uploads backup (02:30, 08:30, 14:30, 20:30 IST)
+
+[Timer]
+OnCalendar=*-*-* 02,08,14,20:30:00 Asia/Kolkata
+Unit=libredesk-backup-uploads.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

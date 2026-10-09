@@ -1,0 +1,5 @@
+# Server-only files: secrets, data and backups.
+.env
+secrets/
+data/
+backups/

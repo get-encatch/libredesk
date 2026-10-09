@@ -1,0 +1,10 @@
+[Unit]
+Description=libredesk monthly backup restore test
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/srv/libredesk
+ExecStart=/srv/libredesk/scripts/restore-test.sh

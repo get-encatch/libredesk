@@ -1,0 +1,121 @@
+# Encatch production stack for libredesk: app, Postgres 18 (with pgBackRest),
+# Redis and Caddy (HTTPS). Secrets come from .env (see .env.example).
+# Persistent data lives under ./data and backups under ./backups.
+
+services:
+  app:
+    image: ghcr.io/get-encatch/libredesk:${LIBREDESK_VERSION:?set LIBREDESK_VERSION in .env}
+    container_name: libredesk_app
+    restart: unless-stopped
+    environment:
+      LIBREDESK_SYSTEM_USER_PASSWORD: ${LIBREDESK_SYSTEM_USER_PASSWORD:-}
+      # Override config.toml values with secrets (`__` separates config sections).
+      LIBREDESK_APP__ENCRYPTION_KEY: ${LIBREDESK_ENCRYPTION_KEY:?set LIBREDESK_ENCRYPTION_KEY in .env}
+      LIBREDESK_DB__USER: ${POSTGRES_USER}
+      LIBREDESK_DB__PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      LIBREDESK_DB__DATABASE: ${POSTGRES_DB}
+    ports:
+      # Local only, for SSH tunnels. Public traffic goes through Caddy.
+      - "127.0.0.1:9000:9000"
+    networks:
+      - libredesk
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./data/uploads:/libredesk/uploads:rw
+      - ./config.toml:/libredesk/config.toml:ro
+    command: [sh, -c, "./libredesk --install --idempotent-install --yes --config /libredesk/config.toml && ./libredesk --upgrade --yes --config /libredesk/config.toml && ./libredesk --config /libredesk/config.toml"]
+
+  # Postgres 18 with pgBackRest, built from postgres:18-alpine (see postgres/Dockerfile).
+  db:
+    build:
+      context: ./postgres
+      pull: true
+    image: encatch/libredesk-postgres:18
+    container_name: libredesk_db
+    restart: unless-stopped
+    # Run an init as PID 1 so pgBackRest's async archive workers are reaped by it.
+    # Without this, Postgres (as PID 1) adopts them and treats their exit as a
+    # backend crash, restarting the whole server.
+    init: true
+    shm_size: 256mb
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      # Postgres 18 images keep data in a versioned directory under /var/lib/postgresql.
+      PGDATA: /var/lib/postgresql/18/docker
+      # pgBackRest connects as the superuser created above (there is no "postgres" role).
+      PGBACKREST_PG1_USER: ${POSTGRES_USER}
+    command:
+      - postgres
+      # Sized for a 2 vCPU / 4 GB host shared with the app.
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - effective_cache_size=2GB
+      - -c
+      - work_mem=8MB
+      - -c
+      - maintenance_work_mem=128MB
+      - -c
+      - max_wal_size=2GB
+      # Continuous WAL archiving to pgBackRest (point-in-time recovery).
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=pgbackrest --stanza=libredesk archive-push %p
+      # Force a WAL switch at least every 5 minutes so a quiet database still
+      # archives recent changes (bounds data loss to ~5 minutes).
+      - -c
+      - archive_timeout=300
+    ports:
+      - "127.0.0.1:5432:5432"
+    networks:
+      - libredesk
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    volumes:
+      - ./data/postgres:/var/lib/postgresql
+      - ./postgres/pgbackrest.conf:/etc/pgbackrest/pgbackrest.conf:ro
+      - ./backups/pgbackrest:/var/lib/pgbackrest
+      - ./backups/dumps:/backups/dumps
+
+  redis:
+    image: redis:7-alpine
+    container_name: libredesk_redis
+    restart: unless-stopped
+    networks:
+      - libredesk
+    volumes:
+      - ./data/redis:/data
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: libredesk_caddy
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    networks:
+      - libredesk
+    depends_on:
+      - app
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./data/caddy/data:/data
+      - ./data/caddy/config:/config
+
+networks:
+  libredesk:

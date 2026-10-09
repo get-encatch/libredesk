@@ -1,0 +1,10 @@
+[Unit]
+Description=Nightly pg_dump (03:00 IST)
+
+[Timer]
+OnCalendar=*-*-* 03:00:00 Asia/Kolkata
+Unit=libredesk-dump-db.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target
