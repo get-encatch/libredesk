@@ -1,6 +1,8 @@
 {
   "_comment": "Encatch helpdesk configuration (support tiers, SLAs, automation rules). Apply with apply.py; see README.md. Times are business hours on the desk's default business hours.",
   "default_business_hours": "IST office hours",
+  "_default_team_comment": "Every new ticket is assigned to this team (round robin among its online members). The team must have no business hours or SLA policy of its own.",
+  "default_team": "Support",
   "support_tier_attribute": {
     "key": "plan",
     "name": "Support tier",
@@ -19,65 +21,84 @@
       "first": "48h",
       "next": "48h",
       "resolution": "135h",
-      "description": "SaaS Standard tier: first reply within 48 business hours."
+      "description": "SaaS Standard tier: first reply within 48 business hours.",
+      "warn_before": "4h"
     },
     {
       "name": "SaaS Growth",
       "first": "24h",
       "next": "24h",
       "resolution": "90h",
-      "description": "SaaS Growth tier: first reply within 24 business hours."
+      "description": "SaaS Growth tier: first reply within 24 business hours.",
+      "warn_before": "2h"
     },
     {
       "name": "Priority support - Normal",
       "first": "24h",
       "next": "24h",
       "resolution": "90h",
-      "description": "Growth Plus and Enterprise Standard, Low/Medium priority: 24 business hours."
+      "description": "Growth Plus and Enterprise Standard, Low/Medium priority: 24 business hours.",
+      "warn_before": "2h"
     },
     {
       "name": "Priority support - Express",
       "first": "8h",
       "next": "8h",
       "resolution": "45h",
-      "description": "Growth Plus and Enterprise Standard, High priority: 8 business hours."
+      "description": "Growth Plus and Enterprise Standard, High priority: 8 business hours.",
+      "warn_before": "1h"
     },
     {
       "name": "Priority support - Priority",
       "first": "2h",
       "next": "2h",
       "resolution": "18h",
-      "description": "Growth Plus and Enterprise Standard, Urgent priority: 2 business hours."
+      "description": "Growth Plus and Enterprise Standard, Urgent priority: 2 business hours.",
+      "warn_before": "30m"
     },
     {
       "name": "Enterprise Premium - Low",
       "first": "16h",
       "next": "16h",
       "resolution": "90h",
-      "description": "Enterprise Premium, Low priority: 16 business hours."
+      "description": "Enterprise Premium, Low priority: 16 business hours.",
+      "warn_before": "2h"
     },
     {
       "name": "Enterprise Premium - Medium",
       "first": "8h",
       "next": "8h",
       "resolution": "45h",
-      "description": "Enterprise Premium, Medium priority: 8 business hours."
+      "description": "Enterprise Premium, Medium priority: 8 business hours.",
+      "warn_before": "1h"
     },
     {
       "name": "Enterprise Premium - High",
       "first": "2h",
       "next": "2h",
       "resolution": "18h",
-      "description": "Enterprise Premium, High priority: 2 business hours."
+      "description": "Enterprise Premium, High priority: 2 business hours.",
+      "warn_before": "30m"
     },
     {
       "name": "Enterprise Premium - Urgent",
       "first": "30m",
       "next": "1h",
       "resolution": "9h",
-      "description": "Enterprise Premium, Urgent priority: 30 business minutes."
+      "description": "Enterprise Premium, Urgent priority: 30 business minutes.",
+      "warn_before": "10m"
     }
   ],
+  "_sla_alerts_comment": "Each policy warns 'warn_before' its deadline, then alerts on breach. Recipients: 'assigned_user' and/or 'role:<Role>' (resolved to agents with that role at apply time, so no emails live in this public repo).",
+  "sla_alerts": {
+    "warning_recipients": [
+      "assigned_user"
+    ],
+    "breach_recipients": [
+      "assigned_user",
+      "role:Admin"
+    ]
+  },
   "remove_sla_policies": [
     "Free",
     "Team",

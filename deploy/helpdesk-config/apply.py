@@ -80,24 +80,54 @@ def main():
         print("attribute: update %s" % a["name"])
         api.call("PUT", "/api/v1/custom-attributes/%d" % attrs[0]["id"], body)
 
-    # 3. SLA policies.
+    # 3. SLA policies, with warning/breach alerts.
+    def recipients(spec):
+        out = []
+        for r in spec:
+            if r.startswith("role:"):
+                role = r[5:]
+                for ag in api.call("GET", "/api/v1/agents") or []:
+                    if role in (api.call("GET", "/api/v1/agents/%d" % ag["id"]).get("roles") or []):
+                        out.append(str(ag["id"]))
+            else:
+                out.append(r)
+        named = [r for r in dict.fromkeys(out) if not r.isdigit()]
+        return named + sorted({r for r in out if r.isdigit()}, key=int)
+    alerts = cfg.get("sla_alerts", {})
+    warn_to, breach_to = recipients(alerts.get("warning_recipients", [])), recipients(alerts.get("breach_recipients", []))
+
+    def notifications(p):
+        n = []
+        if warn_to and p.get("warn_before"):
+            n.append({"type": "warning", "recipients": warn_to, "time_delay": p["warn_before"],
+                      "time_delay_type": "before", "metric": "all"})
+        if breach_to:
+            n.append({"type": "breach", "recipients": breach_to, "time_delay": "",
+                      "time_delay_type": "immediately", "metric": "all"})
+        return n
+
     existing = {s["name"]: s for s in api.call("GET", "/api/v1/sla")}
     for p in cfg["sla_policies"]:
         body = {"name": p["name"], "description": p["description"], "first_response_time": p["first"],
                 "next_response_time": p["next"], "resolution_time": p["resolution"],
-                "notifications": existing.get(p["name"], {}).get("notifications") or []}
+                "notifications": notifications(p)}
         cur = existing.get(p["name"])
         if not cur:
             print("sla: create %s" % p["name"])
             api.call("POST", "/api/v1/sla", body)
-        elif (cur["first_response_time"], cur["next_response_time"], cur["resolution_time"], cur["description"]) != \
-                (p["first"], p["next"], p["resolution"], p["description"]):
+        elif (cur["first_response_time"], cur["next_response_time"], cur["resolution_time"], cur["description"],
+              cur.get("notifications") or []) != \
+                (p["first"], p["next"], p["resolution"], p["description"], body["notifications"]):
             print("sla: update %s" % p["name"])
             api.call("PUT", "/api/v1/sla/%d" % cur["id"], body)
     sla = {s["name"]: str(s["id"]) for s in api.call("GET", "/api/v1/sla")}
     if DRY_RUN:  # policies not created yet in a dry run
         sla.update({p["name"]: "<new %s>" % p["name"] for p in cfg["sla_policies"] if p["name"] not in sla})
     prio = {p["name"]: str(p["id"]) for p in api.call("GET", "/api/v1/priorities")}
+    teams = {t["name"]: str(t["id"]) for t in api.call("GET", "/api/v1/teams") or []}
+    default_team = cfg.get("default_team")
+    if default_team and default_team not in teams and not DRY_RUN:
+        sys.exit("default_team %r does not exist in libredesk; create it first" % default_team)
 
     # 4. Build the desired automation rules.
     def tier_is(t):
@@ -107,8 +137,11 @@ def main():
         """Contact is in tier t when its Support tier field is set to t."""
         return [tier_is(t["name"])]
 
-    def actions(sla_name, priority=None, tags=()):
-        acts = [{"type": "set_sla", "value": [sla[sla_name]]}]
+    def actions(sla_name, priority=None, tags=(), new_ticket=False):
+        acts = []
+        if new_ticket and default_team:
+            acts.append({"type": "assign_team", "value": [teams.get(default_team, "<team %s>" % default_team)]})
+        acts.append({"type": "set_sla", "value": [sla[sla_name]]})
         if priority:
             acts.append({"type": "set_priority", "value": [prio[priority]]})
         if tags:
@@ -124,10 +157,10 @@ def main():
                 kw = [cond("subject", "contains", k) for k in cfg["subject_tags"][level]]
                 new_rules.append(("%s new: %s, %s subject tag" % (RULE_PREFIX, name, level),
                                   "New %s ticket with a %s subject tag: %s priority, %s SLA." % (name, " / ".join(cfg["subject_tags"][level]), level, prios[level]),
-                                  rule_body(in_tier(t), actions(prios[level], level, tags), and_any=kw)))
+                                  rule_body(in_tier(t), actions(prios[level], level, tags, new_ticket=True), and_any=kw)))
             new_rules.append(("%s new: %s" % (RULE_PREFIX, name),
                               "New %s ticket: Medium priority, %s SLA." % (name, prios["Medium"]),
-                              rule_body(in_tier(t), actions(prios["Medium"], "Medium", tags))))
+                              rule_body(in_tier(t), actions(prios["Medium"], "Medium", tags, new_ticket=True))))
             # Priority change: apply the tier's SLA for the new priority.
             for level, sla_name in prios.items():
                 update_rules.append(("%s priority: %s, %s" % (RULE_PREFIX, name, level),
@@ -139,7 +172,7 @@ def main():
                 match = [cond(tier_key, "not set", "", "contact_custom_attribute")] + match
             new_rules.append(("%s new: %s" % (RULE_PREFIX, name),
                               "New %s ticket%s: Medium priority, %s SLA." % (name, " (or no tier recorded)" if t.get("catch_all") else "", t["sla"]),
-                              rule_body(match, actions(t["sla"], "Medium", tags))))
+                              rule_body(match, actions(t["sla"], "Medium", tags, new_ticket=True))))
             if not t.get("catch_all"):
                 # Re-apply on priority change, for tickets whose tier was recorded after they arrived.
                 update_rules.append(("%s priority: %s" % (RULE_PREFIX, name),

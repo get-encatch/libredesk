@@ -28,6 +28,15 @@ All times are **business hours** on the desk's default business hours
 - Lower tiers have no faster Urgent path: priority only orders the work.
 - Resolution targets in the config are generous internal targets.
 
+## Teams and alerts
+
+- Every new ticket is assigned to the `default_team` (**Support**, round robin among its
+  online members). Engineering and Billing get tickets by direct assignment.
+  Agents and team membership are managed in the UI, not here (emails stay out of this public repo).
+- Each SLA policy warns its `warn_before` time ahead of the deadline (to the assigned agent)
+  and alerts on breach (assigned agent + all Admins). `role:<Role>` recipients are resolved
+  to agent IDs at apply time. Alerts appear in-app, and by email once notification email is set up.
+
 ## Canned replies
 
 | Macro | Also sets status |
