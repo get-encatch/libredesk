@@ -22,5 +22,6 @@ const yFormatter = (tick) => {
   return Number.isInteger(tick) ? tick : ''
 }
 
-const priorities = ["Low", "Medium", "High"]
+// encatch: we added an "Urgent" priority (inserted in the DB; there's no admin UI for priorities).
+const priorities = ["Low", "Medium", "High", "Urgent"]
 </script>
