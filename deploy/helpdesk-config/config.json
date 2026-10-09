@@ -1,0 +1,41 @@
+{
+  "_comment": "Encatch helpdesk configuration (support tiers, SLAs, automation rules). Apply with apply.py; see README.md. Times are business hours on the desk's default business hours.",
+
+  "default_business_hours": "IST office hours",
+
+  "support_tier_attribute": {
+    "key": "plan",
+    "name": "Support tier",
+    "description": "Customer's support tier; drives SLA policies. Empty = SaaS Standard.",
+    "values": ["SaaS Standard", "SaaS Growth", "Growth Plus", "Enterprise Standard", "Enterprise Premium"]
+  },
+
+  "sla_policies": [
+    {"name": "SaaS Standard", "first": "48h", "next": "48h", "resolution": "135h", "description": "SaaS Standard tier: first reply within 48 business hours."},
+    {"name": "SaaS Growth", "first": "24h", "next": "24h", "resolution": "90h", "description": "SaaS Growth tier: first reply within 24 business hours."},
+    {"name": "Priority support - Normal", "first": "24h", "next": "24h", "resolution": "90h", "description": "Growth Plus and Enterprise Standard, Low/Medium priority: 24 business hours."},
+    {"name": "Priority support - Express", "first": "8h", "next": "8h", "resolution": "45h", "description": "Growth Plus and Enterprise Standard, High priority: 8 business hours."},
+    {"name": "Priority support - Priority", "first": "2h", "next": "2h", "resolution": "18h", "description": "Growth Plus and Enterprise Standard, Urgent priority: 2 business hours."},
+    {"name": "Enterprise Premium - Low", "first": "16h", "next": "16h", "resolution": "90h", "description": "Enterprise Premium, Low priority: 16 business hours."},
+    {"name": "Enterprise Premium - Medium", "first": "8h", "next": "8h", "resolution": "45h", "description": "Enterprise Premium, Medium priority: 8 business hours."},
+    {"name": "Enterprise Premium - High", "first": "2h", "next": "2h", "resolution": "18h", "description": "Enterprise Premium, High priority: 2 business hours."},
+    {"name": "Enterprise Premium - Urgent", "first": "30m", "next": "1h", "resolution": "9h", "description": "Enterprise Premium, Urgent priority: 30 business minutes."}
+  ],
+
+  "remove_sla_policies": ["Free", "Team", "Growth", "Enterprise", "Urgent"],
+
+  "_tiers_comment": "Priority -> SLA policy per tier. Tiers without a 'priorities' map get one SLA whatever the priority.",
+  "tiers": [
+    {"name": "Growth Plus", "tags": [], "priorities": {"Low": "Priority support - Normal", "Medium": "Priority support - Normal", "High": "Priority support - Express", "Urgent": "Priority support - Priority"}},
+    {"name": "Enterprise Standard", "tags": ["enterprise"], "priorities": {"Low": "Priority support - Normal", "Medium": "Priority support - Normal", "High": "Priority support - Express", "Urgent": "Priority support - Priority"}},
+    {"name": "Enterprise Premium", "tags": ["enterprise", "vip"], "priorities": {"Low": "Enterprise Premium - Low", "Medium": "Enterprise Premium - Medium", "High": "Enterprise Premium - High", "Urgent": "Enterprise Premium - Urgent"}},
+    {"name": "SaaS Growth", "tags": [], "sla": "SaaS Growth"},
+    {"name": "SaaS Standard", "tags": [], "sla": "SaaS Standard", "catch_all": true}
+  ],
+
+  "_subject_tags_comment": "Subject keywords (case-insensitive) that set the starting priority on new tickets, for tiers with a 'priorities' map.",
+  "subject_tags": {
+    "Urgent": ["[URGENT]", "[PRIORITY]"],
+    "High": ["[HIGH]", "[EXPRESS]"]
+  }
+}

@@ -1,0 +1,54 @@
+# Helpdesk configuration (support tiers and SLAs)
+
+`config.json` is the source of truth for Encatch's support tiers, SLA policies and the
+automation rules that apply them. `apply.py` pushes it to libredesk through the API.
+Change the JSON, run the script, commit both.
+
+## Model
+
+All times are **business hours** on the desk's default business hours
+(**IST office hours**, Mon–Fri 10:00–19:00).
+
+| Support tier | Low | Medium | High | Urgent |
+|---|---|---|---|---|
+| SaaS Standard | 48h | 48h | 48h | 48h |
+| SaaS Growth | 24h | 24h | 24h | 24h |
+| Growth Plus | 24h | 24h | 8h | 2h |
+| Enterprise Standard | 24h | 24h | 8h | 2h |
+| Enterprise Premium | 16h | 8h | 2h | 30m |
+
+- The tier comes from the contact field **Support tier** (key `plan`). No tier recorded = SaaS Standard.
+- **New tickets:** the first matching rule sets the SLA and starting priority. For Growth
+  Plus and both Enterprise tiers, a subject tag sets the starting priority:
+  `[URGENT]`/`[PRIORITY]` → Urgent, `[HIGH]`/`[EXPRESS]` → High, otherwise Medium.
+- **Priority changes** (agents triage) re-apply the tier's SLA for the new priority.
+  SaaS Growth also re-applies on priority change, which catches a tier recorded after
+  the ticket arrived. SLA clocks always count from when the ticket was created.
+- Lower tiers have no faster Urgent path: priority only orders the work.
+- Resolution targets in the config are generous internal targets.
+
+## Running it
+
+Needs an API key for an admin agent (Admin → Agents → System → Generate API key). Keep
+the key out of git, and revoke it in the UI when you're done.
+
+```bash
+export LIBREDESK_URL=https://support.encatch.com
+export LIBREDESK_API_KEY=... LIBREDESK_API_SECRET=...
+python3 apply.py --dry-run   # show what would change
+python3 apply.py             # apply
+```
+
+The script is idempotent: objects are matched by name. It **owns every automation rule
+whose name starts with `SLA`**: it creates, updates and deletes those to match the
+config. Name hand-made rules differently. It also sets new-ticket rules to
+"first match wins".
+
+## Gotchas
+
+- Libredesk computes SLA deadlines with the **assigned team's business hours** when the
+  team has some set. Leave teams without business hours, and without a team SLA policy.
+  Either would override these rules.
+- Priority `Urgent` was added directly in the database (no admin UI for priorities).
+- Never change the System agent's email from `System`. Libredesk looks that account up
+  by email, and the app won't start without it.
