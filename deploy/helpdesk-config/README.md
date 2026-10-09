@@ -17,10 +17,8 @@ All times are **business hours** on the desk's default business hours
 | Enterprise Standard | 24h | 24h | 8h | 2h |
 | Enterprise Premium | 16h | 8h | 2h | 30m |
 
-- A contact is in a tier if its **Support tier** field (key `plan`) is set to it, **or** its
-  email is at one of the tier's `domains` in `config.json` (e.g. `"domains": ["bigcorp.com"]`).
-  Domains cover everyone at a company, including first-time contacts. Never list shared
-  domains like `gmail.com`. No tier and no domain match = SaaS Standard.
+- The tier comes only from the contact's **Support tier** field (key `plan`), set by the team
+  per contact. No tier recorded = SaaS Standard.
 - **New tickets:** the first matching rule sets the SLA and starting priority. For Growth
   Plus and both Enterprise tiers, a subject tag sets the starting priority:
   `[URGENT]`/`[PRIORITY]` → Urgent, `[HIGH]`/`[EXPRESS]` → High, otherwise Medium.

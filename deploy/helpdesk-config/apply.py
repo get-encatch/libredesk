@@ -104,9 +104,8 @@ def main():
         return cond(tier_key, "equals", t, "contact_custom_attribute")
 
     def in_tier(t):
-        """Contact is in tier t: Support tier field set to t, or email at one of the tier's domains."""
-        return [tier_is(t["name"])] + [cond("contact_email", "contains", "@" + d.lstrip("@").lower())
-                                       for d in t.get("domains", [])]
+        """Contact is in tier t when its Support tier field is set to t."""
+        return [tier_is(t["name"])]
 
     def actions(sla_name, priority=None, tags=()):
         acts = [{"type": "set_sla", "value": [sla[sla_name]]}]

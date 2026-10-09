@@ -85,11 +85,10 @@
     "Enterprise",
     "Urgent"
   ],
-  "_tiers_comment": "Priority -> SLA policy per tier. Tiers without a 'priorities' map get one SLA whatever the priority. 'domains' (optional): company email domains, e.g. [\"bigcorp.com\"], that put a contact in the tier even without the Support tier field set. Never list shared domains like gmail.com.",
+  "_tiers_comment": "Priority -> SLA policy per tier. Tiers without a 'priorities' map get one SLA whatever the priority. A contact's tier comes only from its Support tier field.",
   "tiers": [
     {
       "name": "Growth Plus",
-      "domains": [],
       "tags": [],
       "priorities": {
         "Low": "Priority support - Normal",
@@ -100,7 +99,6 @@
     },
     {
       "name": "Enterprise Standard",
-      "domains": [],
       "tags": [
         "enterprise"
       ],
@@ -113,7 +111,6 @@
     },
     {
       "name": "Enterprise Premium",
-      "domains": [],
       "tags": [
         "enterprise",
         "vip"
@@ -127,7 +124,6 @@
     },
     {
       "name": "SaaS Growth",
-      "domains": [],
       "tags": [],
       "sla": "SaaS Growth"
     },
