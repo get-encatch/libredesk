@@ -1,3 +1,5 @@
+> **Encatch fork:** this is a modified version of [libredesk](https://github.com/abhinavxd/libredesk), based on release v2.8.0 and modified by CMSS / Encatch from 2026-10-09. It is distributed under the same AGPL-3.0 licence. See [CLAUDE.md](CLAUDE.md) for how this fork is maintained.
+
 <a href="https://zerodha.tech"><img src="https://zerodha.tech/static/images/github-badge.svg" align="right" alt="Zerodha Tech Badge" /></a>
 
 <br>
