@@ -5,8 +5,8 @@ This repo is **get-encatch/libredesk**, the Encatch (CMSS) fork of [abhinavxd/li
 ## Branches and remotes
 
 - `origin` = get-encatch/libredesk (our fork). `upstream` = abhinavxd/libredesk.
-- `release/v2.8.0` is an untouched copy of the upstream `v2.8.0` tag (`086b082`) and is currently the default branch on GitHub. Never commit our changes to `release/*` branches.
-- Our feature work goes on our own integration branch (planned name: `encatch/main`), created from the release branch.
+- `release/v2.8.0` is an untouched copy of the upstream `v2.8.0` tag (`086b082`). Never commit our changes to `release/*` branches.
+- Our feature work goes on our own integration branch `encatch/main` (the default branch on GitHub), created from `release/v2.8.0`.
 - `main` mirrors upstream `main`, which is unreleased code. Do not build from it or deploy it.
 - Upstream releases are git tags (`vX.Y.Z`) cut from upstream `main`. There are no upstream release branches.
 
