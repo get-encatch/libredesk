@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply config.json (support tiers, SLA policies, SLA automation rules) to libredesk.
+"""Apply config.json (support tiers, SLA policies, SLA automation rules, canned replies) to libredesk.
 
 Idempotent: objects are matched by name and created or updated. Automation rules
 whose name starts with RULE_PREFIX are owned by this script; any such rule not
@@ -178,7 +178,25 @@ def main():
         api.call("PUT", "/api/v1/automations/rules/weights", weights)
     api.call("PUT", "/api/v1/automations/rules/execution-mode", {"mode": "first_match"})
 
-    # 6. Remove obsolete SLA policies.
+    # 6. Canned replies (macros), matched by name; macros not in the config are left alone.
+    statuses = {st["name"]: str(st["id"]) for st in api.call("GET", "/api/v1/statuses")}
+    macros = {mc["name"]: mc for mc in api.call("GET", "/api/v1/macros") or []}
+    for mc in cfg.get("macros", []):
+        acts = [{"type": "set_status", "value": [statuses[mc["set_status"]]]}] if mc.get("set_status") else []
+        body = {"name": mc["name"], "message_content": mc["message"], "actions": acts,
+                "visibility": "all", "visible_when": ["replying"]}
+        cur = macros.get(mc["name"])
+        if not cur:
+            print("macro: create %s" % mc["name"])
+            api.call("POST", "/api/v1/macros", body)
+            continue
+        cur_acts = [{"type": a["type"], "value": a["value"]} for a in (cur or {}).get("actions") or []]
+        if cur and (cur["message_content"], cur_acts, cur["visibility"], cur["visible_when"]) != \
+                (body["message_content"], acts, "all", ["replying"]):
+            print("macro: update %s" % mc["name"])
+            api.call("PUT", "/api/v1/macros/%d" % cur["id"], body)
+
+    # 7. Remove obsolete SLA policies.
     for name in cfg.get("remove_sla_policies", []):
         if name in existing:
             print("sla: delete %s" % name)

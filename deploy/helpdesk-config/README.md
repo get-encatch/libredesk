@@ -1,7 +1,7 @@
 # Helpdesk configuration (support tiers and SLAs)
 
-`config.json` is the source of truth for Encatch's support tiers, SLA policies and the
-automation rules that apply them. `apply.py` pushes it to libredesk through the API.
+`config.json` is the source of truth for Encatch's support tiers, SLA policies, the
+automation rules that apply them, and the canned replies (macros). `apply.py` pushes it to libredesk through the API.
 Change the JSON, run the script, commit both.
 
 ## Model
@@ -26,6 +26,22 @@ All times are **business hours** on the desk's default business hours
   the ticket arrived. SLA clocks always count from when the ticket was created.
 - Lower tiers have no faster Urgent path: priority only orders the work.
 - Resolution targets in the config are generous internal targets.
+
+## Canned replies
+
+| Macro | Also sets status |
+|---|---|
+| Acknowledge | — |
+| Ask for bug details | Waiting on customer |
+| Escalated to engineering | Waiting on engineering |
+| Feature request logged | Resolved |
+| Billing handover | — |
+| Resolved - anything else? | Resolved |
+| Closing (no response) | Resolved |
+
+Message placeholders are filled in when the reply is sent: `{{ .Contact.FirstName }}`,
+`{{ .Author.FirstName }}`, `{{ .Conversation.ReferenceNumber }}`. Macros are matched
+by name; macros not in the config are left alone.
 
 ## Running it
 

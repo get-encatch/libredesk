@@ -1,41 +1,184 @@
 {
   "_comment": "Encatch helpdesk configuration (support tiers, SLAs, automation rules). Apply with apply.py; see README.md. Times are business hours on the desk's default business hours.",
-
   "default_business_hours": "IST office hours",
-
   "support_tier_attribute": {
     "key": "plan",
     "name": "Support tier",
     "description": "Customer's support tier; drives SLA policies. Empty = SaaS Standard.",
-    "values": ["SaaS Standard", "SaaS Growth", "Growth Plus", "Enterprise Standard", "Enterprise Premium"]
+    "values": [
+      "SaaS Standard",
+      "SaaS Growth",
+      "Growth Plus",
+      "Enterprise Standard",
+      "Enterprise Premium"
+    ]
   },
-
   "sla_policies": [
-    {"name": "SaaS Standard", "first": "48h", "next": "48h", "resolution": "135h", "description": "SaaS Standard tier: first reply within 48 business hours."},
-    {"name": "SaaS Growth", "first": "24h", "next": "24h", "resolution": "90h", "description": "SaaS Growth tier: first reply within 24 business hours."},
-    {"name": "Priority support - Normal", "first": "24h", "next": "24h", "resolution": "90h", "description": "Growth Plus and Enterprise Standard, Low/Medium priority: 24 business hours."},
-    {"name": "Priority support - Express", "first": "8h", "next": "8h", "resolution": "45h", "description": "Growth Plus and Enterprise Standard, High priority: 8 business hours."},
-    {"name": "Priority support - Priority", "first": "2h", "next": "2h", "resolution": "18h", "description": "Growth Plus and Enterprise Standard, Urgent priority: 2 business hours."},
-    {"name": "Enterprise Premium - Low", "first": "16h", "next": "16h", "resolution": "90h", "description": "Enterprise Premium, Low priority: 16 business hours."},
-    {"name": "Enterprise Premium - Medium", "first": "8h", "next": "8h", "resolution": "45h", "description": "Enterprise Premium, Medium priority: 8 business hours."},
-    {"name": "Enterprise Premium - High", "first": "2h", "next": "2h", "resolution": "18h", "description": "Enterprise Premium, High priority: 2 business hours."},
-    {"name": "Enterprise Premium - Urgent", "first": "30m", "next": "1h", "resolution": "9h", "description": "Enterprise Premium, Urgent priority: 30 business minutes."}
+    {
+      "name": "SaaS Standard",
+      "first": "48h",
+      "next": "48h",
+      "resolution": "135h",
+      "description": "SaaS Standard tier: first reply within 48 business hours."
+    },
+    {
+      "name": "SaaS Growth",
+      "first": "24h",
+      "next": "24h",
+      "resolution": "90h",
+      "description": "SaaS Growth tier: first reply within 24 business hours."
+    },
+    {
+      "name": "Priority support - Normal",
+      "first": "24h",
+      "next": "24h",
+      "resolution": "90h",
+      "description": "Growth Plus and Enterprise Standard, Low/Medium priority: 24 business hours."
+    },
+    {
+      "name": "Priority support - Express",
+      "first": "8h",
+      "next": "8h",
+      "resolution": "45h",
+      "description": "Growth Plus and Enterprise Standard, High priority: 8 business hours."
+    },
+    {
+      "name": "Priority support - Priority",
+      "first": "2h",
+      "next": "2h",
+      "resolution": "18h",
+      "description": "Growth Plus and Enterprise Standard, Urgent priority: 2 business hours."
+    },
+    {
+      "name": "Enterprise Premium - Low",
+      "first": "16h",
+      "next": "16h",
+      "resolution": "90h",
+      "description": "Enterprise Premium, Low priority: 16 business hours."
+    },
+    {
+      "name": "Enterprise Premium - Medium",
+      "first": "8h",
+      "next": "8h",
+      "resolution": "45h",
+      "description": "Enterprise Premium, Medium priority: 8 business hours."
+    },
+    {
+      "name": "Enterprise Premium - High",
+      "first": "2h",
+      "next": "2h",
+      "resolution": "18h",
+      "description": "Enterprise Premium, High priority: 2 business hours."
+    },
+    {
+      "name": "Enterprise Premium - Urgent",
+      "first": "30m",
+      "next": "1h",
+      "resolution": "9h",
+      "description": "Enterprise Premium, Urgent priority: 30 business minutes."
+    }
   ],
-
-  "remove_sla_policies": ["Free", "Team", "Growth", "Enterprise", "Urgent"],
-
+  "remove_sla_policies": [
+    "Free",
+    "Team",
+    "Growth",
+    "Enterprise",
+    "Urgent"
+  ],
   "_tiers_comment": "Priority -> SLA policy per tier. Tiers without a 'priorities' map get one SLA whatever the priority.",
   "tiers": [
-    {"name": "Growth Plus", "tags": [], "priorities": {"Low": "Priority support - Normal", "Medium": "Priority support - Normal", "High": "Priority support - Express", "Urgent": "Priority support - Priority"}},
-    {"name": "Enterprise Standard", "tags": ["enterprise"], "priorities": {"Low": "Priority support - Normal", "Medium": "Priority support - Normal", "High": "Priority support - Express", "Urgent": "Priority support - Priority"}},
-    {"name": "Enterprise Premium", "tags": ["enterprise", "vip"], "priorities": {"Low": "Enterprise Premium - Low", "Medium": "Enterprise Premium - Medium", "High": "Enterprise Premium - High", "Urgent": "Enterprise Premium - Urgent"}},
-    {"name": "SaaS Growth", "tags": [], "sla": "SaaS Growth"},
-    {"name": "SaaS Standard", "tags": [], "sla": "SaaS Standard", "catch_all": true}
+    {
+      "name": "Growth Plus",
+      "tags": [],
+      "priorities": {
+        "Low": "Priority support - Normal",
+        "Medium": "Priority support - Normal",
+        "High": "Priority support - Express",
+        "Urgent": "Priority support - Priority"
+      }
+    },
+    {
+      "name": "Enterprise Standard",
+      "tags": [
+        "enterprise"
+      ],
+      "priorities": {
+        "Low": "Priority support - Normal",
+        "Medium": "Priority support - Normal",
+        "High": "Priority support - Express",
+        "Urgent": "Priority support - Priority"
+      }
+    },
+    {
+      "name": "Enterprise Premium",
+      "tags": [
+        "enterprise",
+        "vip"
+      ],
+      "priorities": {
+        "Low": "Enterprise Premium - Low",
+        "Medium": "Enterprise Premium - Medium",
+        "High": "Enterprise Premium - High",
+        "Urgent": "Enterprise Premium - Urgent"
+      }
+    },
+    {
+      "name": "SaaS Growth",
+      "tags": [],
+      "sla": "SaaS Growth"
+    },
+    {
+      "name": "SaaS Standard",
+      "tags": [],
+      "sla": "SaaS Standard",
+      "catch_all": true
+    }
   ],
-
   "_subject_tags_comment": "Subject keywords (case-insensitive) that set the starting priority on new tickets, for tiers with a 'priorities' map.",
   "subject_tags": {
-    "Urgent": ["[URGENT]", "[PRIORITY]"],
-    "High": ["[HIGH]", "[EXPRESS]"]
-  }
+    "Urgent": [
+      "[URGENT]",
+      "[PRIORITY]"
+    ],
+    "High": [
+      "[HIGH]",
+      "[EXPRESS]"
+    ]
+  },
+  "_macros_comment": "Canned replies (macros), visible to everyone when replying. 'set_status' is applied in the same click. Placeholders: {{ .Contact.FirstName }}, {{ .Author.FirstName }}, {{ .Conversation.ReferenceNumber }}.",
+  "macros": [
+    {
+      "name": "Acknowledge",
+      "message": "<p>Hi {{ if .Contact.FirstName }}{{ .Contact.FirstName }}{{ else }}there{{ end }},</p><p>Thanks for reaching out to Encatch Support. We've received your request and someone from the team is looking into it. We'll get back to you shortly.</p><p>Best,<br>{{ .Author.FirstName }}<br>Encatch Support</p>"
+    },
+    {
+      "name": "Ask for bug details",
+      "message": "<p>Hi {{ if .Contact.FirstName }}{{ .Contact.FirstName }}{{ else }}there{{ end }},</p><p>Thanks for reporting this. To help us reproduce it quickly, could you share:</p><ul><li>Your workspace or project ID</li><li>The SDK and version (e.g. Web, React Native, Flutter, iOS, Android) and the platform or browser</li><li>The form name or ID</li><li>Steps to reproduce, and what you expected vs what happened</li><li>Screenshots or a screen recording, if possible</li></ul><p>Once we have these we'll dig in right away.</p><p>Best,<br>{{ .Author.FirstName }}<br>Encatch Support</p>",
+      "set_status": "Waiting on customer"
+    },
+    {
+      "name": "Escalated to engineering",
+      "message": "<p>Hi {{ if .Contact.FirstName }}{{ .Contact.FirstName }}{{ else }}there{{ end }},</p><p>Thanks for your patience. We've reproduced the issue and passed it to our engineering team. We'll keep you updated and let you know as soon as a fix is available.</p><p>Best,<br>{{ .Author.FirstName }}<br>Encatch Support</p>",
+      "set_status": "Waiting on engineering"
+    },
+    {
+      "name": "Feature request logged",
+      "message": "<p>Hi {{ if .Contact.FirstName }}{{ .Contact.FirstName }}{{ else }}there{{ end }},</p><p>Thanks for the suggestion! We've logged it with our product team. We can't promise a timeline, but requests like this directly shape what we build next.</p><p>Best,<br>{{ .Author.FirstName }}<br>Encatch Support</p>",
+      "set_status": "Resolved"
+    },
+    {
+      "name": "Billing handover",
+      "message": "<p>Hi {{ if .Contact.FirstName }}{{ .Contact.FirstName }}{{ else }}there{{ end }},</p><p>Thanks for getting in touch. I've passed your question to our billing team, who will follow up with you directly.</p><p>Best,<br>{{ .Author.FirstName }}<br>Encatch Support</p>"
+    },
+    {
+      "name": "Resolved - anything else?",
+      "message": "<p>Hi {{ if .Contact.FirstName }}{{ .Contact.FirstName }}{{ else }}there{{ end }},</p><p>Glad we could sort this out. If anything else comes up, just reply to this email and the conversation will reopen.</p><p>Best,<br>{{ .Author.FirstName }}<br>Encatch Support</p>",
+      "set_status": "Resolved"
+    },
+    {
+      "name": "Closing (no response)",
+      "message": "<p>Hi {{ if .Contact.FirstName }}{{ .Contact.FirstName }}{{ else }}there{{ end }},</p><p>We haven't heard back from you, so we're closing this conversation for now. If you still need help, just reply to this email and it will reopen.</p><p>Best,<br>{{ .Author.FirstName }}<br>Encatch Support</p>",
+      "set_status": "Resolved"
+    }
+  ]
 }
