@@ -169,7 +169,12 @@ def main():
         else:
             match = in_tier(t)
             if t.get("catch_all"):
-                match = [cond(tier_key, "not set", "", "contact_custom_attribute")] + match
+                # libredesk evaluates "not set" as false when the contact has never had the
+                # attribute (evaluator.go returns early), so also match every email sender.
+                # This is the last rule and new-ticket rules are first-match, so it only
+                # catches tickets no tier rule matched.
+                match = [cond(tier_key, "not set", "", "contact_custom_attribute"),
+                         cond("contact_email", "contains", "@")] + match
             new_rules.append(("%s new: %s" % (RULE_PREFIX, name),
                               "New %s ticket%s: Medium priority, %s SLA." % (name, " (or no tier recorded)" if t.get("catch_all") else "", t["sla"]),
                               rule_body(match, actions(t["sla"], "Medium", tags, new_ticket=True))))
