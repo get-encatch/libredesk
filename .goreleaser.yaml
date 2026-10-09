@@ -50,6 +50,8 @@ source:
   format: tar.gz
   name_template: "libredesk_{{ .Version }}_source"
 
+# encatch: we only ship linux/amd64 images, so a single image is pushed
+# directly under the final tags (no per-arch images or manifests).
 dockers:
   - use: buildx
     goos: linux
@@ -57,8 +59,8 @@ dockers:
     ids:
       - universal
     image_templates:
-      - "ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:latest-amd64"
-      - "ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:{{ .Tag }}-amd64"
+      - "ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:latest"
+      - "ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:{{ .Tag }}"
     build_flag_templates:
       - --platform=linux/amd64
       - --label=org.opencontainers.image.title={{ .ProjectName }}
@@ -72,88 +74,6 @@ dockers:
     dockerfile: Dockerfile
     extra_files:
       - config.sample.toml
-
-  - use: buildx
-    goos: linux
-    goarch: arm64
-    ids:
-      - universal
-    image_templates:
-      - "ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:latest-arm64"
-      - "ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:{{ .Tag }}-arm64"
-    build_flag_templates:
-      - --platform=linux/arm64
-      - --label=org.opencontainers.image.title={{ .ProjectName }}
-      - --label=org.opencontainers.image.description={{ .ProjectName }}
-      - --label=org.opencontainers.image.url=https://github.com/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}
-      - --label=org.opencontainers.image.source=https://github.com/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}
-      - --label=org.opencontainers.image.version={{ .Version }}
-      - --label=org.opencontainers.image.created={{ time "2006-01-02T15:04:05Z07:00" }}
-      - --label=org.opencontainers.image.revision={{ .FullCommit }}
-      - --label=org.opencontainers.image.licenses=AGPL-3.0
-    dockerfile: Dockerfile
-    extra_files:
-      - config.sample.toml
-
-  - use: buildx
-    goos: linux
-    goarch: arm
-    goarm: 6
-    ids:
-      - universal
-    image_templates:
-      - "ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:latest-armv6"
-      - "ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:{{ .Tag }}-armv6"
-    build_flag_templates:
-      - --platform=linux/arm/v6
-      - --label=org.opencontainers.image.title={{ .ProjectName }}
-      - --label=org.opencontainers.image.description={{ .ProjectName }}
-      - --label=org.opencontainers.image.url=https://github.com/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}
-      - --label=org.opencontainers.image.source=https://github.com/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}
-      - --label=org.opencontainers.image.version={{ .Version }}
-      - --label=org.opencontainers.image.created={{ time "2006-01-02T15:04:05Z07:00" }}
-      - --label=org.opencontainers.image.revision={{ .FullCommit }}
-      - --label=org.opencontainers.image.licenses=AGPL-3.0
-    dockerfile: Dockerfile
-    extra_files:
-      - config.sample.toml
-
-  - use: buildx
-    goos: linux
-    goarch: arm
-    goarm: 7
-    ids:
-      - universal
-    image_templates:
-      - "ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:latest-armv7"
-      - "ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:{{ .Tag }}-armv7"
-    build_flag_templates:
-      - --platform=linux/arm/v7
-      - --label=org.opencontainers.image.title={{ .ProjectName }}
-      - --label=org.opencontainers.image.description={{ .ProjectName }}
-      - --label=org.opencontainers.image.url=https://github.com/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}
-      - --label=org.opencontainers.image.source=https://github.com/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}
-      - --label=org.opencontainers.image.version={{ .Version }}
-      - --label=org.opencontainers.image.created={{ time "2006-01-02T15:04:05Z07:00" }}
-      - --label=org.opencontainers.image.revision={{ .FullCommit }}
-      - --label=org.opencontainers.image.licenses=AGPL-3.0
-    dockerfile: Dockerfile
-    extra_files:
-      - config.sample.toml
-
-docker_manifests:
-  - name_template: ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:latest
-    image_templates:
-      - ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:latest-amd64
-      - ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:latest-arm64
-      - ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:latest-armv6
-      - ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:latest-armv7
-  - name_template: ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:{{ .Tag }}
-    image_templates:
-      - ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:{{ .Tag }}-amd64
-      - ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:{{ .Tag }}-arm64
-      - ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:{{ .Tag }}-armv6
-      - ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:{{ .Tag }}-armv7
 
 release:
   github:
