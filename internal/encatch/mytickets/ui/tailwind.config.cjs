@@ -1,8 +1,8 @@
-// encatch: Tailwind build for the My Tickets pages. The theme mirrors libredesk's
-// frontend/tailwind.config.cjs so the pages match the agent app (shadcn-vue, new-york).
+// encatch: Tailwind build for the My Tickets pages: shadcn component styles with
+// Encatch's design tokens (see app.css), not libredesk's agent-app theme.
 // Dark mode follows the visitor's system setting (no JavaScript on these pages).
 // Rebuild after changing templates: ./build.sh
-const hsl = (v) => `hsl(var(--${v}))`
+const v = (name) => `var(--${name})`
 
 module.exports = {
   darkMode: 'media',
@@ -11,19 +11,23 @@ module.exports = {
     extend: {
       fontFamily: { sans: ['Geist', 'ui-sans-serif', 'system-ui', 'sans-serif', '"Apple Color Emoji"', '"Segoe UI Emoji"'] },
       colors: {
-        border: hsl('border'), input: hsl('input'), ring: hsl('ring'),
-        background: hsl('background'), foreground: hsl('foreground'),
-        primary: { DEFAULT: hsl('primary'), foreground: hsl('primary-foreground') },
-        secondary: { DEFAULT: hsl('secondary'), foreground: hsl('secondary-foreground') },
-        destructive: { DEFAULT: hsl('destructive'), foreground: hsl('destructive-foreground') },
-        success: { DEFAULT: hsl('success'), foreground: hsl('success-foreground') },
-        warning: { DEFAULT: hsl('warning'), foreground: hsl('warning-foreground') },
-        muted: { DEFAULT: hsl('muted'), foreground: hsl('muted-foreground') },
-        accent: { DEFAULT: hsl('accent'), foreground: hsl('accent-foreground') },
-        card: { DEFAULT: hsl('card'), foreground: hsl('card-foreground') },
-        link: hsl('link'),
+        border: v('border'), input: v('input'), ring: v('ring'),
+        background: v('background'), foreground: v('foreground'),
+        primary: { DEFAULT: v('primary'), foreground: v('primary-foreground') },
+        secondary: { DEFAULT: v('secondary'), foreground: v('secondary-foreground') },
+        destructive: { DEFAULT: v('destructive'), foreground: v('destructive-foreground') },
+        success: { DEFAULT: v('success'), foreground: v('success-foreground') },
+        warning: { DEFAULT: v('warning'), foreground: v('warning-foreground') },
+        info: { DEFAULT: v('info'), foreground: v('info-foreground') },
+        muted: { DEFAULT: v('muted'), foreground: v('muted-foreground') },
+        accent: { DEFAULT: v('accent'), foreground: v('accent-foreground') },
+        card: { DEFAULT: v('card'), foreground: v('card-foreground') },
+        'badge-primary': { bg: v('badge-primary-bg'), text: v('badge-primary-text'), border: v('badge-primary-border') },
+        'badge-accent': { bg: v('badge-accent-bg'), text: v('badge-accent-text'), border: v('badge-accent-border') },
+        'badge-neutral': { bg: v('badge-neutral-bg'), text: v('badge-neutral-text'), border: v('badge-neutral-border') },
       },
-      borderRadius: { lg: 'var(--radius)', md: 'calc(var(--radius) - 2px)', sm: 'calc(var(--radius) - 4px)' },
+      letterSpacing: { tight: 'calc(var(--tracking-normal) - 0.025em)', normal: 'var(--tracking-normal)' },
+      borderRadius: { xl: 'calc(var(--radius) + 4px)', lg: 'var(--radius)', md: 'calc(var(--radius) - 2px)', sm: 'calc(var(--radius) - 4px)' },
     },
   },
 }

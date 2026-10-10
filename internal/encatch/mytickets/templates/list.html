@@ -25,7 +25,7 @@
 
 <div class="card divide-y overflow-hidden">
   {{range .Tickets}}
-  <a href="/my-tickets/{{.ReferenceNumber}}" class="block px-5 py-4 transition-colors hover:bg-accent/60">
+  <a href="/my-tickets/{{.ReferenceNumber}}" class="block px-5 py-4 transition-colors hover:bg-accent">
     <div class="flex items-start justify-between gap-3">
       <span class="font-medium leading-snug [overflow-wrap:anywhere]">{{.Subject}}</span>
       {{template "status" .Status}}

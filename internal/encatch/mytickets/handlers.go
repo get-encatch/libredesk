@@ -22,16 +22,26 @@ import (
 //go:embed templates/*.html
 var templateFS embed.FS
 
-// app.css is built from ui/ (Tailwind + libredesk's shadcn tokens); run ui/build.sh
-// after changing templates.
+// static/ holds app.css (built from ui/ with Encatch's design tokens; run
+// ui/build.sh after changing templates) and the Encatch logos.
 //
-//go:embed static/app.css
-var appCSS []byte
+//go:embed static/app.css static/logo-light.svg static/logo-dark.png
+var staticFS embed.FS
 
-// cssVersion busts browser caches when the stylesheet changes.
-var cssVersion = func() string {
-	sum := sha256.Sum256(appCSS)
-	return hex.EncodeToString(sum[:])[:12]
+var assetTypes = map[string]string{
+	"app.css":        "text/css; charset=utf-8",
+	"logo-light.svg": "image/svg+xml",
+	"logo-dark.png":  "image/png",
+}
+
+// assetVersion busts browser caches when any asset changes.
+var assetVersion = func() string {
+	h := sha256.New()
+	for _, name := range []string{"app.css", "logo-light.svg", "logo-dark.png"} {
+		b, _ := staticFS.ReadFile("static/" + name)
+		h.Write(b)
+	}
+	return hex.EncodeToString(h.Sum(nil))[:12]
 }()
 
 const (
@@ -76,7 +86,7 @@ func New(o Opts) (*Service, error) {
 			return m
 		},
 		"date":       func(t time.Time) string { return t.In(ist).Format("2 Jan 2006, 15:04") },
-		"cssVersion": func() string { return cssVersion },
+		"assetVersion": func() string { return assetVersion },
 	}
 	tmpl, err := template.New("").Funcs(funcs).ParseFS(templateFS, "templates/*.html")
 	if err != nil {
@@ -310,12 +320,24 @@ func (s *Service) Reply(r *fastglue.Request) error {
 	return s.redirect(r, basePath+"/"+t.ReferenceNumber+"?sent=1")
 }
 
-// CSS serves the stylesheet. URLs carry ?v=<hash>, so it can be cached long-term.
-func (s *Service) CSS(r *fastglue.Request) error {
+// Asset serves an embedded stylesheet or logo. URLs carry ?v=<hash>, so they
+// can be cached long-term.
+func (s *Service) Asset(r *fastglue.Request) error {
+	name, _ := r.RequestCtx.UserValue("file").(string)
+	ctype, ok := assetTypes[name]
+	if !ok {
+		r.RequestCtx.SetStatusCode(fasthttp.StatusNotFound)
+		return nil
+	}
+	b, err := staticFS.ReadFile("static/" + name)
+	if err != nil {
+		r.RequestCtx.SetStatusCode(fasthttp.StatusNotFound)
+		return nil
+	}
 	r.RequestCtx.Response.Header.Set("Cache-Control", "public, max-age=31536000, immutable")
 	r.RequestCtx.Response.Header.Set("X-Content-Type-Options", "nosniff")
-	r.RequestCtx.SetContentType("text/css; charset=utf-8")
-	r.RequestCtx.SetBody(appCSS)
+	r.RequestCtx.SetContentType(ctype)
+	r.RequestCtx.SetBody(b)
 	return nil
 }
 

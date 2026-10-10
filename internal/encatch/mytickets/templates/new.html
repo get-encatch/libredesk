@@ -33,15 +33,15 @@
       <legend class="label">Priority</legend>
       <div class="grid gap-3 sm:grid-cols-3">
         {{$cur := .Priority}}
-        <label class="card flex cursor-pointer items-start gap-3 p-4 transition-colors hover:bg-accent/60 has-[:checked]:border-primary has-[:checked]:ring-1 has-[:checked]:ring-primary">
+        <label class="card flex cursor-pointer items-start gap-3 p-4 transition-colors hover:bg-accent has-[:checked]:border-primary has-[:checked]:ring-1 has-[:checked]:ring-primary">
           <input type="radio" name="priority" value="Normal" class="radio mt-0.5" {{if or (eq $cur "Normal") (eq $cur "")}}checked{{end}}>
           <span><span class="block text-sm font-medium">Normal</span><span class="text-xs text-muted-foreground">Questions and issues with a workaround</span></span>
         </label>
-        <label class="card flex cursor-pointer items-start gap-3 p-4 transition-colors hover:bg-accent/60 has-[:checked]:border-primary has-[:checked]:ring-1 has-[:checked]:ring-primary">
+        <label class="card flex cursor-pointer items-start gap-3 p-4 transition-colors hover:bg-accent has-[:checked]:border-primary has-[:checked]:ring-1 has-[:checked]:ring-primary">
           <input type="radio" name="priority" value="Express" class="radio mt-0.5" {{if eq $cur "Express"}}checked{{end}}>
           <span><span class="block text-sm font-medium">Express</span><span class="text-xs text-muted-foreground">A key feature is broken, no workaround</span></span>
         </label>
-        <label class="card flex cursor-pointer items-start gap-3 p-4 transition-colors hover:bg-accent/60 has-[:checked]:border-primary has-[:checked]:ring-1 has-[:checked]:ring-primary">
+        <label class="card flex cursor-pointer items-start gap-3 p-4 transition-colors hover:bg-accent has-[:checked]:border-primary has-[:checked]:ring-1 has-[:checked]:ring-primary">
           <input type="radio" name="priority" value="Urgent" class="radio mt-0.5" {{if eq $cur "Urgent"}}checked{{end}}>
           <span><span class="block text-sm font-medium">Urgent</span><span class="text-xs text-muted-foreground">Production is down or data is at risk</span></span>
         </label>

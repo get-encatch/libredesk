@@ -7,12 +7,18 @@
 <title>{{.Title}} · Encatch Support</title>
 <link rel="preload" href="/static/public/static/fonts/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/static/public/static/fonts.css">
-<link rel="stylesheet" href="/my-tickets/assets/app.css?v={{cssVersion}}">
+<link rel="stylesheet" href="/my-tickets/assets/app.css?v={{assetVersion}}">
 </head>
 <body class="min-h-screen">
-<header class="sticky top-0 z-10 border-b bg-background/95 backdrop-blur">
+<header class="sticky top-0 z-10 border-b bg-background">
   <div class="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-    <a href="/my-tickets" class="text-base font-semibold tracking-tight text-foreground">Encatch Support</a>
+    <a href="/my-tickets" class="flex items-center gap-2.5 text-foreground">
+      <picture>
+        <source srcset="/my-tickets/assets/logo-dark.png?v={{assetVersion}}" media="(prefers-color-scheme: dark)">
+        <img src="/my-tickets/assets/logo-light.svg?v={{assetVersion}}" alt="Encatch" class="h-6 w-auto" width="125" height="24">
+      </picture>
+      <span class="border-l pl-2.5 text-sm font-medium text-muted-foreground">Support</span>
+    </a>
     {{with .S}}<div class="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
       <span>{{.Name}} · {{.OrgName}}</span>
       <form method="post" action="/my-tickets/logout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="btn btn-outline btn-sm" type="submit">Sign out</button></form>

@@ -104,7 +104,7 @@ func initEncatchMyTickets(g *fastglue.Fastglue) {
 		}
 	}
 
-	g.GET("/my-tickets/assets/app.css", wrap((*mytickets.Service).CSS))
+	g.GET("/my-tickets/assets/{file}", wrap((*mytickets.Service).Asset))
 	g.GET("/my-tickets/login", rateLimit(wrap((*mytickets.Service).Login), "auth"))
 	g.POST("/my-tickets/login", rateLimit(wrap((*mytickets.Service).Login), "auth"))
 	g.POST("/my-tickets/logout", rateLimit(wrap((*mytickets.Service).Logout), "public"))

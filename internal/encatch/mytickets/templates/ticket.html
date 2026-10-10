@@ -7,11 +7,11 @@
 <p class="mb-6 text-sm text-muted-foreground">#{{.T.ReferenceNumber}} · opened {{date .T.CreatedAt}}{{if .T.ProjectName}} · {{.T.ProjectName}}{{end}}{{if ne .S.ContactID .T.ContactID}} · raised by {{.T.RaisedBy}}{{end}}</p>
 
 {{if .Sent}}<div class="alert mb-4">Your reply was sent. We'll get back to you here and by email.</div>{{end}}
-{{if eq .Status "Waiting on you"}}<div class="alert mb-4 border-warning/40">We're waiting for your reply. Add any details below.</div>{{end}}
+{{if eq .Status "Waiting on you"}}<div class="alert mb-4 border-warning-foreground bg-warning">We're waiting for your reply. Add any details below.</div>{{end}}
 
 <div class="space-y-3">
   {{range .Messages}}
-  <div class="card {{if not .FromCustomer}}bg-muted/50{{end}}">
+  <div class="card {{if not .FromCustomer}}bg-muted{{end}}">
     <div class="flex flex-wrap items-baseline justify-between gap-2 px-5 pt-4">
       <span class="text-sm font-semibold">{{if .FromCustomer}}{{.AuthorName}}{{else}}Encatch Support{{if .AuthorName}} <span class="font-normal text-muted-foreground">· {{.AuthorName}}</span>{{end}}{{end}}</span>
       <span class="text-xs text-muted-foreground">{{date .CreatedAt}}</span>

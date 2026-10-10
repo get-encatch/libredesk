@@ -55,7 +55,7 @@ func main() {
 	g := fastglue.NewGlue()
 	g.GET("/", index)
 	g.GET("/preview-login", previewLogin)
-	g.GET("/my-tickets/assets/app.css", svc.CSS)
+	g.GET("/my-tickets/assets/{file}", svc.Asset)
 	g.GET("/my-tickets/login", svc.Login)
 	g.POST("/my-tickets/logout", svc.Logout)
 	g.GET("/my-tickets", svc.List)

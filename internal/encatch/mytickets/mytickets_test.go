@@ -348,3 +348,18 @@ func TestFlow(t *testing.T) {
 		t.Fatal("session still valid after logout")
 	}
 }
+
+func TestAsset(t *testing.T) {
+	h := newHarness(t)
+	for file, ctype := range assetTypes {
+		resp := h.do(h.svc.Asset, "GET", "/my-tickets/assets/"+file, "", "", map[string]string{"file": file})
+		if resp.StatusCode() != 200 || string(resp.Header.ContentType()) != ctype || len(resp.Body()) == 0 {
+			t.Errorf("%s: status %d, type %q, %d bytes", file, resp.StatusCode(), resp.Header.ContentType(), len(resp.Body()))
+		}
+	}
+	for _, file := range []string{"../handlers.go", "app.css/", "missing.png", ""} {
+		if resp := h.do(h.svc.Asset, "GET", "/my-tickets/assets/x", "", "", map[string]string{"file": file}); resp.StatusCode() != 404 {
+			t.Errorf("%q: want 404, got %d", file, resp.StatusCode())
+		}
+	}
+}
