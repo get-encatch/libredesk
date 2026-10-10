@@ -14,20 +14,12 @@ builds:
     main: ./cmd
     env:
       - CGO_ENABLED=0
+    # encatch: we only ship the linux/amd64 Docker image; building every upstream
+    # platform took ~10 of a release's ~13 minutes.
     goos:
-      - darwin
-      - freebsd
       - linux
-      - netbsd
-      - openbsd
-      - windows
     goarch:
       - amd64
-      - arm64
-      - arm
-    goarm:
-      - 6
-      - 7
     binary: libredesk
     ldflags:
       - -s -w -X "main.buildString={{ .Tag }} ({{ .ShortCommit }} {{ .Date }}, {{ .Os }}/{{ .Arch }})" -X "main.versionString={{ .Tag }}"
