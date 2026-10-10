@@ -66,6 +66,16 @@ python3 apply.py --dry-run   # show what would change
 python3 apply.py             # apply
 ```
 
+On a fresh helpdesk, create these first (the script expects them; in production they
+were made by hand):
+
+- Business hours "IST office hours" (Mon–Fri 10:00–19:00), and the general timezone
+  `Asia/Kolkata`.
+- Teams "Support" (round robin), "Engineering" and "Billing", with no business hours or
+  SLA of their own.
+- Priority `Urgent` (no admin UI: insert a `conversation_priorities` row).
+- Statuses "Waiting on customer" and "Waiting on engineering" (used by the macros).
+
 The script is idempotent: objects are matched by name. It **owns every automation rule
 whose name starts with `SLA`**: it creates, updates and deletes those to match the
 config. Name hand-made rules differently. It also sets new-ticket rules to
