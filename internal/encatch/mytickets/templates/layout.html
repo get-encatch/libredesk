@@ -18,13 +18,14 @@
   <div class="flex items-center justify-between gap-2 px-4 py-3 md:px-4 md:pb-2 md:pt-4">
     {{template "brand"}}
     <div class="flex items-center gap-1 md:hidden">
-      <a class="btn btn-default btn-sm" href="/my-tickets/new">{{template "icon" "plus"}}New</a>
+      {{if .S.CanCreate}}<a class="btn btn-default btn-sm" href="/my-tickets/new">{{template "icon" "plus"}}New</a>{{end}}
       {{template "signout" .S}}
     </div>
   </div>
-  <div class="hidden px-3 pb-2 pt-2 md:block">
+  {{template "orgswitch" .S}}
+  {{if .S.CanCreate}}<div class="hidden px-3 pb-2 pt-2 md:block">
     <a class="btn btn-default w-full" href="/my-tickets/new">{{template "icon" "plus"}}New ticket</a>
-  </div>
+  </div>{{end}}
   {{$nav := dict "S" .S "List" $list "St" $st "P" $p}}
   <details class="nav-dropdown">
     <summary>{{template "icon" "menu"}}<span class="flex-1 truncate">{{if $list}}{{or $st "All tickets"}}{{range .S.Projects}}{{if eq (print .ID) $p}} · {{.Name}}{{end}}{{end}}{{else}}Tickets{{end}}</span>{{template "icon" "chevron-down"}}</summary>
@@ -80,6 +81,33 @@
 {{end}}
 {{end}}
 
+{{/* orgswitch shows the current org; with several, a no-JS dropdown of POST forms switches it. */}}
+{{define "orgswitch"}}<div class="px-4 pb-2 md:px-3">
+  {{if gt (len .Orgs) 1}}
+  <details class="org-switch">
+    <summary title="Switch organisation">
+      <span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium">{{.OrgName}}</span>
+        <span class="block text-xs text-muted-foreground">{{template "accesslabel" .}}</span></span>
+      {{template "icon" "chevron-down"}}
+    </summary>
+    <div class="org-switch-menu" role="menu">
+      {{$cur := .OrgID}}{{$csrf := .CSRF}}
+      {{range .Orgs}}<form method="post" action="/my-tickets/org">
+        <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="org" value="{{.ID}}">
+        <button type="submit" class="org-switch-item {{if eq (print .ID) $cur}}org-switch-item-active{{end}}" role="menuitem">
+          <span class="truncate">{{.Name}}</span>{{if eq (print .ID) $cur}}{{template "icon" "check"}}{{end}}
+        </button>
+      </form>{{end}}
+    </div>
+  </details>
+  {{else}}
+  <div class="org-current"><span class="block truncate text-sm font-medium">{{.OrgName}}</span>
+    <span class="block text-xs text-muted-foreground">{{template "accesslabel" .}}</span></div>
+  {{end}}
+</div>{{end}}
+
+{{define "accesslabel"}}{{if eq .OrgAccess "manage"}}All tickets{{else if eq .OrgAccess "read"}}All tickets · read-only{{else if .CanCreate}}Your projects{{else}}Your projects · read-only{{end}}{{end}}
+
 {{define "brand"}}<a href="/my-tickets" class="flex items-center gap-2.5 text-foreground">
   <picture>
     <source srcset="/my-tickets/assets/logo-dark.png?v={{assetVersion}}" media="(prefers-color-scheme: dark)">
@@ -120,6 +148,8 @@
 {{- else if eq . "info"}}<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
 {{- else if eq . "paperclip"}}<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
 {{- else if eq . "shield"}}<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M12 8v4"/><path d="M12 16h.01"/>
+{{- else if eq . "lock"}}<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+{{- else if eq . "check"}}<path d="M20 6 9 17l-5-5"/>
 {{- else if eq . "chevron-down"}}<path d="m6 9 6 6 6-6"/>
 {{- else if eq . "menu"}}<line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/>
 {{- end}}</svg>{{end}}

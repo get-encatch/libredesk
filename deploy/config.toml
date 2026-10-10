@@ -201,7 +201,7 @@ requests_per_minute = 300
 enabled = true
 # Email inbox new tickets are created in (Encatch Support).
 inbox_id = 1
-session_ttl = "8h"
+session_ttl = "2h"
 max_token_lifetime = "60s"
 clock_leeway = "30s"
 tiers = ["SaaS Standard", "SaaS Growth", "Growth Plus", "Enterprise Standard", "Enterprise Premium"]

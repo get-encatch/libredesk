@@ -21,7 +21,7 @@ import (
 //	[my_tickets]
 //	enabled = true
 //	inbox_id = 1
-//	session_ttl = "8h"
+//	session_ttl = "2h"
 //	max_token_lifetime = "60s"
 //	clock_leeway = "30s"
 //	tiers = [...]           # valid support_tier values
@@ -57,12 +57,11 @@ func initEncatchMyTickets(g *fastglue.Fastglue) {
 	}
 
 	inboxID := ko.Int("my_tickets.inbox_id")
-	sessionTTL := durationOr(ko.String("my_tickets.session_ttl"), 8*time.Hour)
+	sessionTTL := durationOr(ko.String("my_tickets.session_ttl"), 2*time.Hour)
 	verifier := &mytickets.Verifier{
 		Secrets:     secrets,
 		MaxLifetime: durationOr(ko.String("my_tickets.max_token_lifetime"), 60*time.Second),
 		Leeway:      durationOr(ko.String("my_tickets.clock_leeway"), 30*time.Second),
-		ValidTiers:  ko.Strings("my_tickets.tiers"),
 	}
 	priorityTiers := ko.Strings("my_tickets.priority_tiers")
 	customerExts := ko.Strings("my_tickets.allowed_extensions") // empty: libredesk's setting alone
@@ -89,7 +88,7 @@ func initEncatchMyTickets(g *fastglue.Fastglue) {
 				Store:    mytickets.NewStore(app.redis, sessionTTL),
 				Backend: &mytickets.LibredeskBackend{
 					Users: app.user, Conversations: app.conversation, Media: app.media, DB: db, InboxID: inboxID,
-					OrgTiers: &orgtiers.Store{DB: db, Tiers: verifier.ValidTiers},
+					OrgTiers: &orgtiers.Store{DB: db, Tiers: ko.Strings("my_tickets.tiers")},
 				},
 				EligibleTiers: priorityTiers,
 				SessionTTL:    sessionTTL,
@@ -128,6 +127,7 @@ func initEncatchMyTickets(g *fastglue.Fastglue) {
 	g.GET("/my-tickets", rateLimit(wrap((*mytickets.Service).List), "public"))
 	g.GET("/my-tickets/new", rateLimit(wrap((*mytickets.Service).NewForm), "public"))
 	g.POST("/my-tickets/new", rateLimit(wrap((*mytickets.Service).Create), "public"))
+	g.POST("/my-tickets/org", rateLimit(wrap((*mytickets.Service).SwitchOrg), "public"))
 	g.GET("/my-tickets/{ref}", rateLimit(wrap((*mytickets.Service).View), "public"))
 	g.POST("/my-tickets/{ref}/reply", rateLimit(wrap((*mytickets.Service).Reply), "public"))
 }

@@ -152,6 +152,16 @@
   .composer-file { @apply min-w-0 max-w-[16rem] cursor-pointer text-xs file:mr-2 file:cursor-pointer file:rounded-md file:border file:border-solid file:border-input file:bg-background file:px-2 file:py-1 file:text-xs file:font-medium file:text-foreground hover:file:bg-accent; }
   .file-chip { @apply inline-flex max-w-[16rem] items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-accent; }
   .file-chip .icon { @apply h-3.5 w-3.5 text-muted-foreground; }
+  /* Org switcher (sidebar) and read-only note */
+  .org-current { @apply rounded-md border bg-background px-3 py-2; }
+  .org-switch { @apply relative; }
+  .org-switch > summary { @apply flex cursor-pointer list-none items-center gap-2 rounded-md border bg-background px-3 py-2 hover:bg-accent; }
+  .org-switch > summary::-webkit-details-marker { display: none; }
+  .org-switch > summary > .icon { @apply text-muted-foreground; }
+  .org-switch-menu { @apply absolute inset-x-0 top-full z-40 mt-1 max-h-72 overflow-y-auto rounded-md border bg-card p-1; }
+  .org-switch-item { @apply flex w-full items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent; }
+  .org-switch-item-active { @apply font-medium text-accent-foreground; }
+  .readonly-note { @apply flex items-center gap-2 rounded-md border border-dashed px-3 py-2.5 text-sm text-muted-foreground; }
   .mail-dot { @apply h-2 w-2 shrink-0 rounded-full bg-primary; }
   .avatar-xs { @apply h-5 w-5 rounded-full text-[10px]; }
   .avatar-muted { @apply bg-muted text-muted-foreground; }

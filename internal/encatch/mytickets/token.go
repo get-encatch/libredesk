@@ -21,7 +21,6 @@ import (
 
 // Scope values in the token.
 const (
-	ScopeSelf    = "self"
 	ScopeProject = "project"
 	ScopeOrg     = "org"
 )
@@ -41,6 +40,7 @@ var (
 	ErrUnknownIssuer = errors.New("unknown issuer")
 	ErrBadToken      = errors.New("invalid token")
 	ErrTokenTooLong  = errors.New("token lifetime too long")
+	ErrNoAccess      = errors.New("no ticket access in any organisation")
 )
 
 // ID accepts a JSON string or number (Encatch IDs are auto-increment integers, but
@@ -72,24 +72,38 @@ func (i *ID) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// Project is one project the user may see.
+// Access levels, from the Encatch scopes org_tickets / project_tickets (and all,
+// projects): manage raises and replies, read only views.
+const (
+	AccessManage = "manage"
+	AccessRead   = "read"
+)
+
+// MaxProjects caps the projects one token may carry (across all orgs).
+const MaxProjects = 500
+
+// Project is one project the user may see, with their access to its tickets.
 type Project struct {
-	ID   ID     `json:"id"`
-	Name string `json:"name"`
+	ID     ID     `json:"id"`
+	Name   string `json:"name"`
+	Access string `json:"access"` // manage | read
 }
 
-// Claims is the token payload agreed in the design doc.
+// Org is one org the user may use, as core-accounts computed it from their roles.
+type Org struct {
+	ID       ID        `json:"id"`
+	Name     string    `json:"name"`
+	Access   string    `json:"access"` // manage | read: all the org's tickets; "": only Projects
+	Projects []Project `json:"projects"`
+}
+
+// Claims is the token payload (v2: every org the user has ticket access in).
 type Claims struct {
-	ExternalUserID   ID        `json:"external_user_id"`
-	Email            string    `json:"email"`
-	Name             string    `json:"name"`
-	OrgID            ID        `json:"org_id"`
-	OrgName          string    `json:"org_name"`
-	SupportTier      string    `json:"support_tier"`
-	Projects         []Project `json:"projects"`
-	CurrentProjectID ID        `json:"current_project_id"`
-	Scope            string    `json:"scope"`
-	Instance         string    `json:"instance"` // must match the issuer's instance
+	ExternalUserID ID     `json:"external_user_id"`
+	Email          string `json:"email"`
+	Name           string `json:"name"`
+	Orgs           []Org  `json:"orgs"`
+	Instance       string `json:"instance"` // must match the issuer's instance
 	jwt.RegisteredClaims
 }
 
@@ -110,8 +124,6 @@ type Verifier struct {
 	MaxLifetime time.Duration
 	// Leeway tolerates clock skew between issuer and libredesk.
 	Leeway time.Duration
-	// ValidTiers lists accepted support_tier values; others are dropped.
-	ValidTiers []string
 }
 
 // IssuerKey normalises an issuer for config lookup: env var names can't hold "-".
@@ -182,44 +194,81 @@ func (v *Verifier) check(c *Claims) error {
 	if c.ExternalUserID == "" || c.Email == "" || !strings.Contains(c.Email, "@") {
 		return fmt.Errorf("%w: external_user_id and a valid email are required", ErrBadToken)
 	}
-	if c.OrgID == "" || strings.TrimSpace(c.OrgName) == "" {
-		return fmt.Errorf("%w: org_id and org_name are required", ErrBadToken)
-	}
-	switch c.Scope {
-	case "":
-		c.Scope = ScopeSelf
-	case ScopeSelf, ScopeProject, ScopeOrg:
-	default:
-		return fmt.Errorf("%w: unknown scope %q", ErrBadToken, c.Scope)
-	}
-	if c.SupportTier != "" && !contains(v.ValidTiers, c.SupportTier) {
-		c.SupportTier = "" // unknown tier: fall back to the contact's tier
+	if err := c.checkOrgs(); err != nil {
+		return err
 	}
 	return c.prefix(inst)
 }
 
-// prefix checks the instance's own ids and namespaces them with the instance, so ids
-// from different instances never meet: org/project "42" from prod becomes "prod-42".
+// checkOrgs validates the orgs and their access levels, and drops orgs that grant
+// nothing. Ids must be the instance's own numbers (prefix adds the instance).
+func (c *Claims) checkOrgs() error {
+	seen := map[ID]bool{}
+	kept := c.Orgs[:0]
+	total := 0
+	for _, o := range c.Orgs {
+		o.Name = strings.TrimSpace(o.Name)
+		if !numericRe.MatchString(string(o.ID)) || o.Name == "" {
+			return fmt.Errorf("%w: each org needs a numeric id and a name", ErrBadToken)
+		}
+		if seen[o.ID] {
+			return fmt.Errorf("%w: org %s listed twice", ErrBadToken, o.ID)
+		}
+		seen[o.ID] = true
+		if o.Access != "" && o.Access != AccessManage && o.Access != AccessRead {
+			return fmt.Errorf("%w: unknown org access %q", ErrBadToken, o.Access)
+		}
+		projects := o.Projects[:0]
+		pseen := map[ID]bool{}
+		for _, p := range o.Projects {
+			p.Name = strings.TrimSpace(p.Name)
+			if !numericRe.MatchString(string(p.ID)) || p.Name == "" || pseen[p.ID] {
+				return fmt.Errorf("%w: each project needs a unique numeric id and a name", ErrBadToken)
+			}
+			pseen[p.ID] = true
+			switch p.Access {
+			case AccessManage, AccessRead:
+			case "":
+				continue // no access to this project
+			default:
+				return fmt.Errorf("%w: unknown project access %q", ErrBadToken, p.Access)
+			}
+			// Org managers manage every project in the org.
+			if o.Access == AccessManage {
+				p.Access = AccessManage
+			}
+			projects = append(projects, p)
+		}
+		o.Projects = projects
+		total += len(projects)
+		if o.Access == "" && len(projects) == 0 {
+			continue // nothing granted in this org
+		}
+		kept = append(kept, o)
+	}
+	if total > MaxProjects {
+		return fmt.Errorf("%w: more than %d projects", ErrBadToken, MaxProjects)
+	}
+	c.Orgs = kept
+	if len(c.Orgs) == 0 {
+		return ErrNoAccess
+	}
+	return nil
+}
+
+// prefix checks the user id and namespaces every id with the instance, so ids from
+// different instances never meet: org/project "42" from prod becomes "prod-42".
 func (c *Claims) prefix(inst string) error {
 	if !userIDRe.MatchString(string(c.ExternalUserID)) {
 		return fmt.Errorf("%w: external_user_id must be an id or uuid", ErrBadToken)
 	}
-	if !numericRe.MatchString(string(c.OrgID)) {
-		return fmt.Errorf("%w: org_id must be a number", ErrBadToken)
-	}
 	p := func(id ID) ID { return ID(inst + "-" + string(id)) }
-	c.ExternalUserID, c.OrgID = p(c.ExternalUserID), p(c.OrgID)
-	for i := range c.Projects {
-		if !numericRe.MatchString(string(c.Projects[i].ID)) {
-			return fmt.Errorf("%w: project ids must be numbers", ErrBadToken)
+	c.ExternalUserID = p(c.ExternalUserID)
+	for i := range c.Orgs {
+		c.Orgs[i].ID = p(c.Orgs[i].ID)
+		for j := range c.Orgs[i].Projects {
+			c.Orgs[i].Projects[j].ID = p(c.Orgs[i].Projects[j].ID)
 		}
-		c.Projects[i].ID = p(c.Projects[i].ID)
-	}
-	if c.CurrentProjectID != "" {
-		if !numericRe.MatchString(string(c.CurrentProjectID)) {
-			return fmt.Errorf("%w: current_project_id must be a number", ErrBadToken)
-		}
-		c.CurrentProjectID = p(c.CurrentProjectID)
 	}
 	return nil
 }

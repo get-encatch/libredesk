@@ -55,7 +55,7 @@
     <li class="px-4 py-12 text-center">
       <p class="text-sm font-medium">{{if .Search}}No tickets match “{{.Search}}”{{else if or .Status .ProjectName}}No tickets in this view{{else}}No tickets yet{{end}}</p>
       <p class="mt-1 text-xs text-muted-foreground">{{if or .Search .Status .ProjectName}}Try another search or view.{{else}}Raise a ticket and we'll get back to you.{{end}}</p>
-      {{if .Search}}<a class="btn btn-outline btn-sm mt-4" href="/my-tickets{{if .Status}}?status={{.Status}}{{if .Project}}&amp;project={{.Project}}{{end}}{{else if .Project}}?project={{.Project}}{{end}}">Clear search</a>{{else if not (or .Status .ProjectName)}}<a class="btn btn-default btn-sm mt-4" href="/my-tickets/new">{{template "icon" "plus"}}New ticket</a>{{end}}
+      {{if .Search}}<a class="btn btn-outline btn-sm mt-4" href="/my-tickets{{if .Status}}?status={{.Status}}{{if .Project}}&amp;project={{.Project}}{{end}}{{else if .Project}}?project={{.Project}}{{end}}">Clear search</a>{{else if and .S.CanCreate (not (or .Status .ProjectName))}}<a class="btn btn-default btn-sm mt-4" href="/my-tickets/new">{{template "icon" "plus"}}New ticket</a>{{end}}
     </li>
     {{end}}
   </ul>

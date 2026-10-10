@@ -42,21 +42,82 @@ const (
 var PriorityChoices = []string{"Normal", "Express", "Urgent"}
 
 // Session is what a signed-in customer may do, captured from the token at sign-in.
+// Orgs holds every org the token granted (ids instance-prefixed); the fields after it
+// describe the current org, which the customer can switch (UseOrg).
 type Session struct {
-	ContactID        int       `json:"contact_id"`
-	Email            string    `json:"email"`
-	Name             string    `json:"name"`
-	Issuer           string    `json:"iss"`
-	Instance         string    `json:"instance"` // ids below are already prefixed with it
-	OrgID            string    `json:"org_id"`
-	OrgName          string    `json:"org_name"`
-	SupportTier      string    `json:"support_tier"` // the org's tier at sign-in, from the helpdesk (not the token)
-	Scope            string    `json:"scope"`
-	Projects         []Project `json:"projects"`
-	CurrentProjectID string    `json:"current_project_id"`
-	CSRF             string    `json:"csrf"`
-	CreatedAt        time.Time `json:"created_at"`
+	ContactID int    `json:"contact_id"`
+	Email     string `json:"email"`
+	Name      string `json:"name"`
+	Issuer    string `json:"iss"`
+	Instance  string `json:"instance"`
+	Orgs      []Org  `json:"orgs"`
+
+	OrgID       string    `json:"org_id"`
+	OrgName     string    `json:"org_name"`
+	OrgAccess   string    `json:"org_access"`   // manage | read: all the org's tickets; "": only Projects
+	Scope       string    `json:"scope"`        // ScopeOrg or ScopeProject, from OrgAccess
+	Projects    []Project `json:"projects"`     // the current org's projects with access
+	SupportTier string    `json:"support_tier"` // the current org's tier, from the helpdesk (not the token)
+
+	CSRF      string    `json:"csrf"`
+	CreatedAt time.Time `json:"created_at"`
 }
+
+// UseOrg makes one of the session's orgs current. It reports false if the session
+// doesn't have that org.
+func (s *Session) UseOrg(id string) bool {
+	for _, o := range s.Orgs {
+		if string(o.ID) != id {
+			continue
+		}
+		s.OrgID, s.OrgName, s.OrgAccess, s.Projects = string(o.ID), o.Name, o.Access, o.Projects
+		s.Scope = ScopeProject
+		if o.Access != "" {
+			s.Scope = ScopeOrg
+		}
+		s.SupportTier = ""
+		return true
+	}
+	return false
+}
+
+// CanManageOrg: raise org-level tickets and reply anywhere in the current org.
+func (s Session) CanManageOrg() bool { return s.OrgAccess == AccessManage }
+
+// CanManageProject: raise and reply in a project of the current org.
+func (s Session) CanManageProject(id string) bool {
+	if s.CanManageOrg() {
+		return true
+	}
+	for _, p := range s.Projects {
+		if string(p.ID) == id {
+			return p.Access == AccessManage
+		}
+	}
+	return false
+}
+
+// CanManageTicket: reply to (and attach files on) a visible ticket.
+func (s Session) CanManageTicket(t TicketSummary) bool {
+	if t.ProjectID == "" {
+		return s.CanManageOrg() // org-level ticket
+	}
+	return s.CanManageProject(t.ProjectID)
+}
+
+// ManageProjects lists the current org's projects the user may raise tickets in.
+func (s Session) ManageProjects() []Project {
+	out := []Project{}
+	for _, p := range s.Projects {
+		if s.CanManageProject(string(p.ID)) {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// CanCreate: anything to raise a ticket in (org level or a project).
+func (s Session) CanCreate() bool { return s.CanManageOrg() || len(s.ManageProjects()) > 0 }
 
 // ProjectIDs returns the IDs of the projects in the session.
 func (s Session) ProjectIDs() []string {
@@ -184,22 +245,18 @@ type ListQuery struct {
 // Visible reports whether a session may see a ticket. It mirrors the SQL in the
 // adapter and is used for single-ticket access checks.
 func Visible(s Session, t TicketSummary) bool {
-	switch s.Scope {
-	case ScopeOrg:
-		return t.OrgID == s.OrgID
-	case ScopeProject: // their projects' tickets, plus their own (as in self scope)
-		if _, ok := s.ProjectName(t.ProjectID); ok && t.ProjectID != "" && t.OrgID == s.OrgID {
-			return true
-		}
-		return ownTicket(s, t)
-	default:
-		return ownTicket(s, t)
+	if t.OrgID == "" || t.OrgID != s.OrgID {
+		return false
 	}
-}
-
-// ownTicket: the user's own tickets for this org, plus their own tickets with no org (email).
-func ownTicket(s Session, t TicketSummary) bool {
-	return t.ContactID == s.ContactID && (t.OrgID == s.OrgID || t.OrgID == "")
+	switch s.Scope {
+	case ScopeOrg: // org access: every ticket in the org
+		return true
+	case ScopeProject: // project access only: their projects' tickets, never org-level ones
+		_, ok := s.ProjectName(t.ProjectID)
+		return ok && t.ProjectID != ""
+	default:
+		return false
+	}
 }
 
 // PriorityEligible reports whether a tier may choose Express/Urgent.
@@ -223,6 +280,9 @@ type Backend interface {
 	// RegisterOrg records that an org used My Tickets (keeping its name current) and
 	// returns its support tier, which the helpdesk owns (see internal/encatch/orgtiers).
 	RegisterOrg(instance, orgID, orgName string) (string, error)
+	// LatestTicketOrg returns which of orgIDs the contact's most recent ticket belongs to
+	// ("" if none), to open My Tickets there.
+	LatestTicketOrg(contactID int, orgIDs []string) (string, error)
 	// OrgTier returns an org's current support tier.
 	OrgTier(orgID string) (string, error)
 	// AddReply adds a customer reply to a ticket.

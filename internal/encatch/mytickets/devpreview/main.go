@@ -44,7 +44,7 @@ func main() {
 	backend := newSampleBackend()
 	svc, err := mytickets.New(mytickets.Opts{
 		Verifier: &mytickets.Verifier{Secrets: map[string][]string{"encatch_accounts_local": {secret}},
-			MaxLifetime: time.Minute, Leeway: 30 * time.Second, ValidTiers: tiers},
+			MaxLifetime: time.Minute, Leeway: 30 * time.Second},
 		Store:         mytickets.NewStore(rdb, 8*time.Hour),
 		Backend:       backend,
 		EligibleTiers: []string{"Growth Plus", "Enterprise Standard", "Enterprise Premium"},
@@ -65,7 +65,7 @@ func main() {
 	g.GET("/preview-login", func(r *fastglue.Request) error {
 		// The sign-in links pick a tier: act as an admin who set it for the org.
 		if tier := string(r.RequestCtx.QueryArgs().Peek("tier")); tier != "" {
-			backend.setTier("local-42", tier)
+			backend.setTier("local-42", tier) // BigCorp
 		}
 		return previewLogin(r)
 	})
@@ -75,6 +75,7 @@ func main() {
 	g.GET("/my-tickets", svc.List)
 	g.GET("/my-tickets/new", svc.NewForm)
 	g.POST("/my-tickets/new", svc.Create)
+	g.POST("/my-tickets/org", svc.SwitchOrg)
 	g.GET("/my-tickets/{ref}", svc.View)
 	g.POST("/my-tickets/{ref}/reply", svc.Reply)
 	g.GET("/preview-uploads/{id}", backend.serveUpload)
@@ -87,18 +88,17 @@ func main() {
 	log.Fatal(srv.ListenAndServe(addr))
 }
 
-// index lists one-click sign-ins for each scope and tier.
+// index lists one-click sign-ins, one per kind of access.
 func index(r *fastglue.Request) error {
 	type opt struct{ label, query string }
 	opts := []opt{
-		{"Anita (Growth Plus, self): sees only her tickets, can pick priority", "user=anita&tier=Growth+Plus&scope=self"},
-		{"Anita (Growth Plus, project): sees Mobile app tickets from her team", "user=anita&tier=Growth+Plus&scope=project"},
-		{"Ravi (Enterprise Premium, org): sees every BigCorp ticket", "user=ravi&tier=Enterprise+Premium&scope=org"},
-		{"Meera (SaaS Standard, self): no priority choice", "user=meera&tier=SaaS+Standard&scope=self"},
-		{"New user with no tickets yet (SaaS Growth)", "user=new&tier=SaaS+Growth&scope=self"},
+		{"Anita: manages BigCorp (org_tickets:2), reads Acme's iOS app (project_tickets:4)", "user=anita&tier=Growth+Plus"},
+		{"Ravi: reads all of BigCorp (org_tickets:4), read-only", "user=ravi&tier=Enterprise+Premium"},
+		{"Meera: manages BigCorp's Mobile app, reads Website (project_tickets)", "user=meera&tier=Growth+Plus"},
+		{"Sam: manages Acme only, no tickets yet (SaaS Standard)", "user=sam&tier=SaaS+Standard"},
 	}
 	var b strings.Builder
-	b.WriteString(`<!doctype html><meta charset=utf-8><title>My Tickets preview</title><link rel=stylesheet href="/static/public/static/fonts.css"><link rel=stylesheet href="/my-tickets/assets/app.css"><body class="min-h-screen"><main class="mx-auto max-w-3xl px-4 pt-8"><div class="card" style="max-width:560px;margin:40px auto"><div class="card-header"><h1 class="card-title text-xl">My Tickets preview</h1><p class="card-description">Local UI preview with sample data. Pick who to sign in as. Each link mints a fresh signed token, exactly like an Encatch backend app would.</p></div><div class="card-content" style="display:grid;gap:8px">`)
+	b.WriteString(`<!doctype html><meta charset=utf-8><title>My Tickets preview</title><link rel=stylesheet href="/static/public/static/fonts.css"><link rel=stylesheet href="/my-tickets/assets/app.css"><body class="min-h-screen"><main class="mx-auto max-w-3xl px-4 pt-8"><div class="card" style="max-width:560px;margin:40px auto"><div class="card-header"><h1 class="card-title text-xl">My Tickets preview</h1><p class="card-description">Local UI preview with sample data. Pick who to sign in as. Each link mints a fresh token with that person's orgs and access, as core-accounts' /support page will. The tier is set for BigCorp, as an admin would on the Customer organisations page.</p></div><div class="card-content" style="display:grid;gap:8px">`)
 	for _, o := range opts {
 		fmt.Fprintf(&b, `<a class="btn btn-outline" style="justify-content:flex-start;white-space:normal;height:auto;padding:8px 14px;text-align:left" href="/preview-login?%s">%s</a>`, o.query, o.label)
 	}
@@ -108,11 +108,25 @@ func index(r *fastglue.Request) error {
 	return nil
 }
 
-var people = map[string]struct{ id, name, email string }{
-	"anita": {"1", "Anita Rao", "anita@bigcorp.com"},
-	"ravi":  {"2", "Ravi Kumar", "ravi@bigcorp.com"},
-	"meera": {"3", "Meera Shah", "meera@bigcorp.com"},
-	"new":   {"9", "Sam New", "sam@bigcorp.com"},
+type person struct {
+	id, name, email string
+	orgs            []map[string]any
+}
+
+func proj(id int, name, access string) map[string]any {
+	return map[string]any{"id": id, "name": name, "access": access}
+}
+
+var people = map[string]person{
+	"anita": {"1", "Anita Rao", "anita@bigcorp.com", []map[string]any{
+		{"id": 42, "name": "BigCorp", "access": "manage", "projects": []map[string]any{proj(17, "Mobile app", "manage"), proj(18, "Website", "manage")}},
+		{"id": 7, "name": "Acme", "access": "", "projects": []map[string]any{proj(31, "iOS app", "read")}}}},
+	"ravi": {"2", "Ravi Kumar", "ravi@bigcorp.com", []map[string]any{
+		{"id": 42, "name": "BigCorp", "access": "read", "projects": []map[string]any{proj(17, "Mobile app", "read"), proj(18, "Website", "read")}}}},
+	"meera": {"3", "Meera Shah", "meera@bigcorp.com", []map[string]any{
+		{"id": 42, "name": "BigCorp", "access": "", "projects": []map[string]any{proj(17, "Mobile app", "manage"), proj(18, "Website", "read")}}}},
+	"sam": {"9", "Sam Lee", "sam@acme.com", []map[string]any{
+		{"id": 7, "name": "Acme", "access": "manage", "projects": []map[string]any{proj(31, "iOS app", "manage")}}}},
 }
 
 // previewLogin signs a token for the chosen person and redirects to the real login.
@@ -125,10 +139,8 @@ func previewLogin(r *fastglue.Request) error {
 	now := time.Now()
 	tok, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"iss": "encatch-accounts-local", "instance": "local", "external_user_id": p.id, "email": p.email, "name": p.name,
-		"org_id": 42, "org_name": "BigCorp", "support_tier": string(q.Peek("tier")), "scope": string(q.Peek("scope")),
-		"projects":           []map[string]any{{"id": 17, "name": "Mobile app"}, {"id": 18, "name": "Website"}},
-		"current_project_id": 17,
-		"iat":                now.Unix(), "exp": now.Add(time.Minute).Unix(), "jti": fmt.Sprintf("p-%d", now.UnixNano()),
+		"orgs": p.orgs,
+		"iat":  now.Unix(), "exp": now.Add(time.Minute).Unix(), "jti": fmt.Sprintf("p-%d", now.UnixNano()),
 	}).SignedString([]byte(secret))
 	r.RequestCtx.Redirect("/my-tickets/login?token="+tok, http.StatusSeeOther)
 	return nil
@@ -157,6 +169,26 @@ func (b *sampleBackend) RegisterOrg(instance, orgID, orgName string) (string, er
 	return b.OrgTier(orgID)
 }
 
+func (b *sampleBackend) LatestTicketOrg(contactID int, orgIDs []string) (string, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	var best *mytickets.TicketSummary
+	for _, t := range b.tickets {
+		if t.ContactID != contactID {
+			continue
+		}
+		for _, id := range orgIDs {
+			if t.OrgID == id && (best == nil || t.CreatedAt.After(best.CreatedAt)) {
+				best = t
+			}
+		}
+	}
+	if best == nil {
+		return "", nil
+	}
+	return best.OrgID, nil
+}
+
 func (b *sampleBackend) OrgTier(orgID string) (string, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -167,7 +199,7 @@ func (b *sampleBackend) OrgTier(orgID string) (string, error) {
 }
 
 func newSampleBackend() *sampleBackend {
-	b := &sampleBackend{tiers: map[string]string{}, files: map[string]mytickets.Upload{}, contacts: map[string]int{"local-1": 1, "local-2": 2, "local-3": 3}, names: map[int]string{1: "Anita Rao", 2: "Ravi Kumar", 3: "Meera Shah"},
+	b := &sampleBackend{tiers: map[string]string{}, files: map[string]mytickets.Upload{}, contacts: map[string]int{"local-1": 1, "local-2": 2, "local-3": 3}, names: map[int]string{1: "Anita Rao", 2: "Ravi Kumar", 3: "Meera Shah", 4: "Kiran Das"},
 		tickets: map[string]*mytickets.TicketSummary{}, msgs: map[string][]mytickets.Message{}, next: 140}
 	ago := func(h int) time.Time { return time.Now().Add(-time.Duration(h) * time.Hour) }
 	add := func(ref string, contact int, subject, status, project, projectName string, created, updated time.Time, msgs ...mytickets.Message) {
@@ -195,6 +227,10 @@ func newSampleBackend() *sampleBackend {
 		cust("Meera Shah", "<p>Please update our billing address on future invoices.</p>", 4))
 	add("139", 2, "Export responses to CSV is slow", "Open", "local-18", "Website", ago(2), ago(1),
 		cust("Ravi Kumar", "<p>CSV export for our largest form takes several minutes. Is there a faster way?</p>", 2))
+	// Acme (org 7): one ticket in its iOS app project, raised by Acme's Kiran.
+	b.tickets["140"] = &mytickets.TicketSummary{UUID: "u140", ReferenceNumber: "140", Subject: "Survey targeting on iPad", InternalStatus: "Open",
+		ContactID: 4, RaisedBy: "Kiran Das", OrgID: "local-7", ProjectID: "local-31", ProjectName: "iOS app", CreatedAt: ago(30), UpdatedAt: ago(6)}
+	b.msgs["u140"] = []mytickets.Message{cust("Kiran Das", "<p>Our NPS survey shows on iPhone but not on iPad. Same SDK version.</p>", 30)}
 	return b
 }
 

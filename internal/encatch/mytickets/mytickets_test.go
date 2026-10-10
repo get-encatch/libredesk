@@ -24,7 +24,7 @@ var tiers = []string{"SaaS Standard", "SaaS Growth", "Growth Plus", "Enterprise 
 func testVerifier() *Verifier {
 	return &Verifier{
 		Secrets:     map[string][]string{"encatch_accounts_prod": {"current-secret", "old-secret"}},
-		MaxLifetime: 60 * time.Second, Leeway: 30 * time.Second, ValidTiers: tiers,
+		MaxLifetime: 60 * time.Second, Leeway: 30 * time.Second,
 	}
 }
 
@@ -41,9 +41,10 @@ func baseClaims() jwt.MapClaims {
 	now := time.Now()
 	return jwt.MapClaims{
 		"iss": "encatch-accounts-prod", "instance": "prod", "external_user_id": 9134, "email": "Anita@BigCorp.com", "name": "Anita Rao",
-		"org_id": 42, "org_name": "BigCorp", "support_tier": "Growth Plus", "scope": "self",
-		"projects": []map[string]any{{"id": 17, "name": "Mobile app"}, {"id": "18", "name": "Website"}},
-		"iat":      now.Unix(), "exp": now.Add(60 * time.Second).Unix(), "jti": fmt.Sprintf("j-%d", now.UnixNano()),
+		// Anita manages BigCorp's tickets (org_tickets:2).
+		"orgs": []map[string]any{{"id": 42, "name": "BigCorp", "access": "manage",
+			"projects": []map[string]any{{"id": 17, "name": "Mobile app", "access": "manage"}, {"id": "18", "name": "Website", "access": "read"}}}},
+		"iat": now.Unix(), "exp": now.Add(60 * time.Second).Unix(), "jti": fmt.Sprintf("j-%d", now.UnixNano()),
 	}
 }
 
@@ -55,7 +56,8 @@ func TestVerify(t *testing.T) {
 	if err != nil {
 		t.Fatalf("valid token rejected: %v", err)
 	}
-	if c.Email != "anita@bigcorp.com" || c.OrgID != "prod-42" || c.ExternalUserID != "prod-9134" || c.Projects[1].ID != "prod-18" {
+	if c.Email != "anita@bigcorp.com" || c.ExternalUserID != "prod-9134" || c.Orgs[0].ID != "prod-42" ||
+		c.Orgs[0].Projects[1].ID != "prod-18" || c.Orgs[0].Projects[1].Access != AccessManage { // org managers manage every project
 		t.Fatalf("claims not normalised: %+v", c)
 	}
 	if _, err := v.Verify(sign(t, "old-secret", baseClaims())); err != nil {
@@ -72,9 +74,9 @@ func TestVerify(t *testing.T) {
 		"lifetime too long": sign(t, "current-secret", mod(func(c jwt.MapClaims) { c["exp"] = time.Now().Add(10 * time.Minute).Unix() })),
 		"no jti":            sign(t, "current-secret", mod(func(c jwt.MapClaims) { delete(c, "jti") })),
 		"no exp":            sign(t, "current-secret", mod(func(c jwt.MapClaims) { delete(c, "exp") })),
-		"no org":            sign(t, "current-secret", mod(func(c jwt.MapClaims) { delete(c, "org_id") })),
+		"no orgs":           sign(t, "current-secret", mod(func(c jwt.MapClaims) { delete(c, "orgs") })),
 		"bad email":         sign(t, "current-secret", mod(func(c jwt.MapClaims) { c["email"] = "nope" })),
-		"bad scope":         sign(t, "current-secret", mod(func(c jwt.MapClaims) { c["scope"] = "admin" })),
+		"bad org access":    sign(t, "current-secret", mod(func(c jwt.MapClaims) { c["orgs"] = []map[string]any{{"id": 1, "name": "X", "access": "admin"}} })),
 		"garbage":           "not.a.jwt",
 	}
 	for name, tok := range bad {
@@ -89,9 +91,53 @@ func TestVerify(t *testing.T) {
 		t.Error("alg=none token accepted")
 	}
 
-	c, err = v.Verify(sign(t, "current-secret", mod(func(c jwt.MapClaims) { c["support_tier"] = "Platinum"; delete(c, "scope") })))
-	if err != nil || c.SupportTier != "" || c.Scope != ScopeSelf {
-		t.Fatalf("unknown tier should be dropped and scope default to self: %+v %v", c, err)
+}
+
+func TestVerifyOrgs(t *testing.T) {
+	v := testVerifier()
+	tok := func(orgs []map[string]any) string {
+		c := baseClaims()
+		c["orgs"] = orgs
+		return sign(t, "current-secret", c)
+	}
+	proj := func(id any, access string) map[string]any {
+		return map[string]any{"id": id, "name": fmt.Sprint("P", id), "access": access}
+	}
+
+	// Orgs and projects without access are dropped; read stays read for project-only orgs.
+	c, err := v.Verify(tok([]map[string]any{
+		{"id": 1, "name": "Nothing here", "access": "", "projects": []map[string]any{proj(5, "")}},
+		{"id": 2, "name": "Projects only", "access": "", "projects": []map[string]any{proj(6, "read"), proj(7, "manage"), proj(8, "")}},
+		{"id": 3, "name": "Org reader", "access": "read", "projects": []map[string]any{proj(9, "manage")}},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Orgs) != 2 || c.Orgs[0].ID != "prod-2" || len(c.Orgs[0].Projects) != 2 || c.Orgs[0].Projects[0].Access != AccessRead ||
+		c.Orgs[1].Projects[0].Access != AccessManage { // org read + project manage: manage on that project
+		t.Fatalf("orgs = %+v", c.Orgs)
+	}
+
+	many := make([]map[string]any, MaxProjects+1)
+	for i := range many {
+		many[i] = proj(i+1, "read")
+	}
+	for name, orgs := range map[string][]map[string]any{
+		"no access anywhere":   {{"id": 1, "name": "X", "access": "", "projects": []map[string]any{proj(5, "")}}},
+		"duplicate org":        {{"id": 1, "name": "X", "access": "read"}, {"id": 1, "name": "Y", "access": "read"}},
+		"duplicate project":    {{"id": 1, "name": "X", "access": "", "projects": []map[string]any{proj(5, "read"), proj(5, "manage")}}},
+		"bad project access":   {{"id": 1, "name": "X", "access": "", "projects": []map[string]any{proj(5, "owner")}}},
+		"org without name":     {{"id": 1, "name": " ", "access": "read"}},
+		"too many projects":    {{"id": 1, "name": "X", "access": "read", "projects": many}},
+		"already prefixed org": {{"id": "prod-1", "name": "X", "access": "read"}},
+		"non-numeric project":  {{"id": 1, "name": "X", "access": "", "projects": []map[string]any{proj("x1", "read")}}},
+	} {
+		if _, err := v.Verify(tok(orgs)); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	if _, err := v.Verify(tok([]map[string]any{{"id": 1, "name": "X", "access": ""}})); !errors.Is(err, ErrNoAccess) {
+		t.Errorf("no access: err = %v, want ErrNoAccess", err)
 	}
 }
 
@@ -108,53 +154,38 @@ func TestCustomerStatus(t *testing.T) {
 }
 
 func TestVisible(t *testing.T) {
-	projects := []Project{{ID: "17", Name: "Mobile app"}}
-	self := Session{ContactID: 1, OrgID: "42", Scope: ScopeSelf, Projects: projects}
+	projects := []Project{{ID: "17", Name: "Mobile app", Access: AccessManage}}
+	org := Session{ContactID: 1, OrgID: "42", OrgAccess: AccessRead, Scope: ScopeOrg}
 	proj := Session{ContactID: 1, OrgID: "42", Scope: ScopeProject, Projects: projects}
-	org := Session{ContactID: 1, OrgID: "42", Scope: ScopeOrg}
-
-	mine := TicketSummary{ContactID: 1, OrgID: "42", ProjectID: "17"}
-	mineEmail := TicketSummary{ContactID: 1}
-	mineOtherOrg := TicketSummary{ContactID: 1, OrgID: "7"}
-	teammate := TicketSummary{ContactID: 2, OrgID: "42", ProjectID: "17"}
-	teammateOtherProject := TicketSummary{ContactID: 2, OrgID: "42", ProjectID: "99"}
-	otherOrgSameProjectID := TicketSummary{ContactID: 3, OrgID: "7", ProjectID: "17"}
 
 	check := func(name string, s Session, tk TicketSummary, want bool) {
 		if got := Visible(s, tk); got != want {
 			t.Errorf("%s: Visible = %v, want %v", name, got, want)
 		}
 	}
-	check("self sees own", self, mine, true)
-	check("self sees own email ticket", self, mineEmail, true)
-	check("self never sees own ticket in another org", self, mineOtherOrg, false)
-	check("self never sees teammate", self, teammate, false)
-	check("project sees teammate in project", proj, teammate, true)
-	check("project never sees other project", proj, teammateOtherProject, false)
-	check("project never crosses orgs", proj, otherOrgSameProjectID, false)
-	// Project users also see their own tickets, like self scope.
-	check("project sees own email ticket", proj, mineEmail, true)
-	check("project sees own org-level ticket", proj, TicketSummary{ContactID: 1, OrgID: "42"}, true)
-	check("project sees own ticket in another of the org's projects", proj, TicketSummary{ContactID: 1, OrgID: "42", ProjectID: "99"}, true)
-	check("project never sees teammate's org-level ticket", proj, TicketSummary{ContactID: 2, OrgID: "42"}, false)
-	check("project never sees own ticket in another org", proj, mineOtherOrg, false)
-	check("org sees teammate", org, teammateOtherProject, true)
-	check("org never crosses orgs", org, otherOrgSameProjectID, false)
+	check("org sees teammate's project ticket", org, TicketSummary{ContactID: 2, OrgID: "42", ProjectID: "99"}, true)
+	check("org sees org-level ticket", org, TicketSummary{ContactID: 2, OrgID: "42"}, true)
+	check("org never crosses orgs", org, TicketSummary{ContactID: 1, OrgID: "7", ProjectID: "17"}, false)
+	check("org never sees email tickets", org, TicketSummary{ContactID: 1}, false)
+	check("project sees teammate in project", proj, TicketSummary{ContactID: 2, OrgID: "42", ProjectID: "17"}, true)
+	check("project never sees other project", proj, TicketSummary{ContactID: 1, OrgID: "42", ProjectID: "99"}, false)
+	check("project never sees org-level tickets, even own", proj, TicketSummary{ContactID: 1, OrgID: "42"}, false)
+	check("project never crosses orgs", proj, TicketSummary{ContactID: 3, OrgID: "7", ProjectID: "17"}, false)
+	check("project never sees email tickets", proj, TicketSummary{ContactID: 1}, false)
+	check("no scope sees nothing", Session{OrgID: "42"}, TicketSummary{ContactID: 1, OrgID: "42", ProjectID: "17"}, false)
 }
 
 func TestScopeWhere(t *testing.T) {
-	where, args := scopeWhere(ListQuery{Scope: ScopeSelf, ContactID: 5, OrgID: "42", Status: StatusResolved})
-	if !strings.Contains(where, "c.contact_id = $1") || !strings.Contains(where, "NOT (c.custom_attributes ? 'org_id')") || len(args) != 2 {
-		t.Fatalf("self where = %q %v", where, args)
-	}
-	where, args = scopeWhere(ListQuery{Scope: ScopeProject, ContactID: 5, OrgID: "42", ProjectIDs: []string{"17"}})
-	if !strings.Contains(where, "'org_id' = $1 AND c.custom_attributes->>'project_id' = ANY($2)") ||
-		!strings.Contains(where, "OR (c.contact_id = $3") || len(args) != 3 || args[2] != 5 {
+	where, args := scopeWhere(ListQuery{Scope: ScopeProject, ContactID: 5, OrgID: "42", ProjectIDs: []string{"17"}, Status: StatusResolved})
+	if !strings.Contains(where, "'org_id' = $1") || !strings.Contains(where, "'project_id' = ANY($2)") || strings.Contains(where, "contact_id") || len(args) != 2 {
 		t.Fatalf("project where = %q %v", where, args)
 	}
 	where, _ = scopeWhere(ListQuery{Scope: ScopeOrg, OrgID: "42", ProjectID: "17"})
 	if strings.Contains(where, "contact_id") || !strings.Contains(where, "'project_id' = $2") {
 		t.Fatalf("org where = %q", where)
+	}
+	if where, _ = scopeWhere(ListQuery{Scope: "", OrgID: "42"}); !strings.Contains(where, "FALSE") {
+		t.Fatalf("unknown scope must match nothing: %q", where)
 	}
 }
 
@@ -192,6 +223,15 @@ type fakeBackend struct {
 func (f *fakeBackend) RegisterOrg(instance, orgID, orgName string) (string, error) {
 	f.seenOrgs[orgID] = orgName
 	return f.OrgTier(orgID)
+}
+func (f *fakeBackend) LatestTicketOrg(contactID int, orgIDs []string) (string, error) {
+	var best TicketSummary
+	for _, t := range f.tickets {
+		if t.ContactID == contactID && contains(orgIDs, t.OrgID) && (best.OrgID == "" || t.CreatedAt.After(best.CreatedAt)) {
+			best = t
+		}
+	}
+	return best.OrgID, nil
 }
 func (f *fakeBackend) OrgTier(orgID string) (string, error) {
 	if t, ok := f.tiers[orgID]; ok {
@@ -372,10 +412,10 @@ func TestFlow(t *testing.T) {
 		t.Fatalf("reply location with filters = %q", loc)
 	}
 
-	// A teammate's ticket is hidden in self scope and returns 404, not 403.
-	h.be.tickets["900"] = TicketSummary{UUID: "u900", ReferenceNumber: "900", ContactID: 99, OrgID: "prod-42"}
+	// Another org's ticket is hidden and returns 404, not 403.
+	h.be.tickets["900"] = TicketSummary{UUID: "u900", ReferenceNumber: "900", ContactID: 1, OrgID: "prod-7", ProjectID: "prod-17"}
 	if resp := h.do(h.svc.View, "GET", "/my-tickets/900", sid, "", map[string]string{"ref": "900"}); resp.StatusCode() != fasthttp.StatusNotFound {
-		t.Fatalf("teammate ticket in self scope: status %d", resp.StatusCode())
+		t.Fatalf("other org's ticket: status %d", resp.StatusCode())
 	}
 
 	// The helpdesk owns the tier: the token's support_tier is ignored. An admin moved
@@ -653,12 +693,11 @@ func TestInstances(t *testing.T) {
 	// The instance comes from the issuer and prefixes every id.
 	c, err := v.Verify(mod("uat-secret", func(c jwt.MapClaims) {
 		c["iss"], c["instance"], c["external_user_id"] = "encatch-accounts-uat", "uat", "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
-		c["current_project_id"] = 17
 	}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.OrgID != "uat-42" || c.Projects[0].ID != "uat-17" || c.CurrentProjectID != "uat-17" ||
+	if c.Orgs[0].ID != "uat-42" || c.Orgs[0].Projects[0].ID != "uat-17" ||
 		c.ExternalUserID != "uat-0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b" || c.Instance != "uat" {
 		t.Fatalf("uat claims = %+v", c)
 	}
@@ -669,8 +708,6 @@ func TestInstances(t *testing.T) {
 		// uat's secret can't speak for prod, even when the token says prod.
 		"other instance's secret": mod("uat-secret", func(c jwt.MapClaims) {}),
 		"old-style issuer":        mod("current-secret", func(c jwt.MapClaims) { c["iss"] = "encatch-dashboard" }),
-		"already prefixed org":    mod("current-secret", func(c jwt.MapClaims) { c["org_id"] = "prod-42" }),
-		"non-numeric project":     mod("current-secret", func(c jwt.MapClaims) { c["projects"] = []map[string]any{{"id": "x1", "name": "X"}} }),
 		"bad user id":             mod("current-secret", func(c jwt.MapClaims) { c["external_user_id"] = "a b" }),
 	} {
 		if _, err := v.Verify(tok); err == nil {
@@ -693,7 +730,7 @@ func TestInstanceIsolation(t *testing.T) {
 	h := newHarness(t)
 	h.svc.verifier.Secrets["encatch_accounts_uat"] = []string{"uat-secret"}
 	c := baseClaims()
-	c["iss"], c["instance"], c["scope"] = "encatch-accounts-uat", "uat", "org"
+	c["iss"], c["instance"] = "encatch-accounts-uat", "uat"
 	sid := sessionCookie(t, h.do(h.svc.Login, "GET", "/my-tickets/login?token="+sign(t, "uat-secret", c), "", "", nil))
 	h.be.tickets["700"] = TicketSummary{UUID: "u700", ReferenceNumber: "700", ContactID: 50, OrgID: "prod-42", Subject: "Prod org ticket", InternalStatus: "Open"}
 	h.be.tickets["701"] = TicketSummary{UUID: "u701", ReferenceNumber: "701", ContactID: 51, OrgID: "uat-42", Subject: "Uat org ticket", InternalStatus: "Open"}
@@ -704,4 +741,122 @@ func TestInstanceIsolation(t *testing.T) {
 	if resp := h.do(h.svc.View, "GET", "/my-tickets/700", sid, "", map[string]string{"ref": "700"}); resp.StatusCode() != fasthttp.StatusNotFound {
 		t.Fatalf("uat user opened a prod ticket: %d", resp.StatusCode())
 	}
+}
+
+// signIn signs a token with the given orgs for user 9134 and returns the session id.
+func (h *harness) signIn(orgs []map[string]any) (string, Session) {
+	c := baseClaims()
+	c["orgs"] = orgs
+	c["jti"] = fmt.Sprintf("j-%d", time.Now().UnixNano())
+	sid := sessionCookie(h.t, h.do(h.svc.Login, "GET", "/my-tickets/login?token="+sign(h.t, "current-secret", c), "", "", nil))
+	sess, _ := h.svc.store.Get(context.Background(), sid)
+	return sid, sess
+}
+
+func TestAccess(t *testing.T) {
+	h := newHarness(t)
+	now := time.Now()
+	h.be.tickets["200"] = TicketSummary{UUID: "u200", ReferenceNumber: "200", ContactID: 50, OrgID: "prod-42", Subject: "Org-level billing", InternalStatus: "Open", CreatedAt: now}
+	h.be.tickets["201"] = TicketSummary{UUID: "u201", ReferenceNumber: "201", ContactID: 50, OrgID: "prod-42", ProjectID: "prod-17", ProjectName: "Mobile app", Subject: "Mobile crash", InternalStatus: "Open", CreatedAt: now}
+	h.be.tickets["202"] = TicketSummary{UUID: "u202", ReferenceNumber: "202", ContactID: 50, OrgID: "prod-42", ProjectID: "prod-18", ProjectName: "Website", Subject: "Website slow", InternalStatus: "Open", CreatedAt: now}
+	h.be.msgs["u201"] = []Message{{FromCustomer: true, HTML: "x"}}
+	h.be.msgs["u202"] = []Message{{FromCustomer: true, HTML: "x"}}
+	page := func(sid, path string, uv map[string]string) (int, string) {
+		resp := h.do(map[string]func(*fastglue.Request) error{"list": h.svc.List, "new": h.svc.NewForm, "view": h.svc.View}[path], "GET", "/", sid, "", uv)
+		return resp.StatusCode(), string(resp.Body())
+	}
+
+	t.Run("org reader: sees everything, raises and replies nothing", func(t *testing.T) {
+		sid, sess := h.signIn([]map[string]any{{"id": 42, "name": "BigCorp", "access": "read"}})
+		if _, body := page(sid, "list", nil); !strings.Contains(body, "Org-level billing") || !strings.Contains(body, "Website slow") || strings.Contains(body, "New ticket") {
+			t.Fatal("reader list: wrong tickets or a New ticket button")
+		}
+		if code, _ := page(sid, "new", nil); code != fasthttp.StatusForbidden {
+			t.Fatalf("reader new form: %d", code)
+		}
+		if resp := h.do(h.svc.Create, "POST", "/my-tickets/new", sid, "csrf="+sess.CSRF+"&subject=S&message=M", nil); resp.StatusCode() != fasthttp.StatusForbidden {
+			t.Fatalf("reader create: %d", resp.StatusCode())
+		}
+		if _, body := page(sid, "view", map[string]string{"ref": "201"}); strings.Contains(body, `name="message"`) || !strings.Contains(body, "read-only access") {
+			t.Fatal("reader ticket page offers a reply box")
+		}
+		h.do(h.svc.Reply, "POST", "/my-tickets/201/reply", sid, "csrf="+sess.CSRF+"&message=hi", map[string]string{"ref": "201"})
+		if len(h.be.msgs["u201"]) != 1 {
+			t.Fatal("reader reply was added")
+		}
+	})
+
+	t.Run("project manager: own projects only, no org-level", func(t *testing.T) {
+		sid, sess := h.signIn([]map[string]any{{"id": 42, "name": "BigCorp", "access": "", "projects": []map[string]any{
+			{"id": 17, "name": "Mobile app", "access": "manage"}, {"id": 18, "name": "Website", "access": "read"}}}})
+		if sess.Scope != ScopeProject {
+			t.Fatalf("scope = %q", sess.Scope)
+		}
+		if _, body := page(sid, "list", nil); strings.Contains(body, "Org-level billing") || !strings.Contains(body, "Mobile crash") || !strings.Contains(body, "Website slow") {
+			t.Fatal("project list: wrong tickets")
+		}
+		if code, _ := page(sid, "view", map[string]string{"ref": "200"}); code != fasthttp.StatusNotFound {
+			t.Fatalf("project user opened an org-level ticket: %d", code)
+		}
+		_, form := page(sid, "new", nil)
+		if strings.Contains(form, "Not about a specific project") || !strings.Contains(form, ">Mobile app</option>") || strings.Contains(form, ">Website</option>") {
+			t.Fatal("new form offers org-level or a read-only project")
+		}
+		before := len(h.be.tickets)
+		for _, project := range []string{"", "prod-18", "prod-99"} {
+			resp := h.do(h.svc.Create, "POST", "/my-tickets/new", sid, "csrf="+sess.CSRF+"&subject=S&message=M&project="+project, nil)
+			if !strings.Contains(string(resp.Body()), "choose one of your projects") {
+				t.Fatalf("create in %q accepted: %d", project, resp.StatusCode())
+			}
+		}
+		if resp := h.do(h.svc.Create, "POST", "/my-tickets/new", sid, "csrf="+sess.CSRF+"&subject=S&message=M&project=prod-17", nil); resp.StatusCode() != fasthttp.StatusSeeOther || len(h.be.tickets) != before+1 {
+			t.Fatalf("create in managed project: %d", resp.StatusCode())
+		}
+		h.do(h.svc.Reply, "POST", "/my-tickets/202/reply", sid, "csrf="+sess.CSRF+"&message=hi", map[string]string{"ref": "202"})
+		if len(h.be.msgs["u202"]) != 1 {
+			t.Fatal("reply on a read-only project was added")
+		}
+		if resp := h.do(h.svc.Reply, "POST", "/my-tickets/201/reply", sid, "csrf="+sess.CSRF+"&message=hi", map[string]string{"ref": "201"}); resp.StatusCode() != fasthttp.StatusSeeOther {
+			t.Fatalf("reply on a managed project: %d", resp.StatusCode())
+		}
+	})
+
+	t.Run("two orgs: opens the latest ticket's org and switches", func(t *testing.T) {
+		h.be.contacts["prod-9134"] = 77
+		h.be.tickets["300"] = TicketSummary{UUID: "u300", ReferenceNumber: "300", ContactID: 77, OrgID: "prod-7", Subject: "Acme question", InternalStatus: "Open", CreatedAt: now.Add(time.Hour)}
+		sid, sess := h.signIn([]map[string]any{
+			{"id": 42, "name": "BigCorp", "access": "read"},
+			{"id": 7, "name": "Acme", "access": "manage"}})
+		if sess.OrgID != "prod-7" {
+			t.Fatalf("opened %q, want the latest ticket's org prod-7", sess.OrgID)
+		}
+		_, body := page(sid, "list", nil)
+		if !strings.Contains(body, "Acme question") || strings.Contains(body, "Mobile crash") || !strings.Contains(body, `value="prod-42"`) {
+			t.Fatal("Acme list wrong, or no switcher")
+		}
+		ttl := h.svc.store.rdb.TTL(context.Background(), sessionPrefix+sid).Val()
+		if resp := h.do(h.svc.SwitchOrg, "POST", "/my-tickets/org", sid, "org=prod-42", nil); resp.StatusCode() != fasthttp.StatusForbidden {
+			t.Fatalf("switch without csrf: %d", resp.StatusCode())
+		}
+		if resp := h.do(h.svc.SwitchOrg, "POST", "/my-tickets/org", sid, "csrf="+sess.CSRF+"&org=prod-99", nil); resp.StatusCode() != fasthttp.StatusNotFound {
+			t.Fatalf("switch to a foreign org: %d", resp.StatusCode())
+		}
+		if resp := h.do(h.svc.SwitchOrg, "POST", "/my-tickets/org", sid, "csrf="+sess.CSRF+"&org=prod-42", nil); resp.StatusCode() != fasthttp.StatusSeeOther {
+			t.Fatalf("switch: %d", resp.StatusCode())
+		}
+		if _, body := page(sid, "list", nil); !strings.Contains(body, "Mobile crash") || strings.Contains(body, "Acme question") || strings.Contains(body, "New ticket") {
+			t.Fatal("after switching to BigCorp (read): wrong list or a New ticket button")
+		}
+		if after := h.svc.store.rdb.TTL(context.Background(), sessionPrefix+sid).Val(); after > ttl || after <= 0 {
+			t.Fatalf("switching changed the session lifetime: %v -> %v", ttl, after)
+		}
+	})
+
+	t.Run("orgs without access never reach the session", func(t *testing.T) {
+		c := baseClaims()
+		c["orgs"] = []map[string]any{{"id": 5, "name": "None", "access": "", "projects": []map[string]any{{"id": 1, "name": "P", "access": ""}}}}
+		if resp := h.do(h.svc.Login, "GET", "/my-tickets/login?token="+sign(t, "current-secret", c), "", "", nil); resp.StatusCode() == fasthttp.StatusSeeOther {
+			t.Fatal("token without any access signed in")
+		}
+	})
 }

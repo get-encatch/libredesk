@@ -60,6 +60,16 @@ func (s *Store) Create(ctx context.Context, sess Session) (string, error) {
 	return token, nil
 }
 
+// Update saves a changed session (e.g. a switched org) without extending its life.
+func (s *Store) Update(ctx context.Context, token string, sess Session) error {
+	b, err := json.Marshal(sess)
+	if err != nil {
+		return err
+	}
+	// XX: only if it still exists; KeepTTL: the fixed lifetime from sign-in stays.
+	return s.rdb.SetArgs(ctx, sessionPrefix+token, b, redis.SetArgs{Mode: "XX", KeepTTL: true}).Err()
+}
+
 // Get loads a session by token.
 func (s *Store) Get(ctx context.Context, token string) (Session, error) {
 	var sess Session

@@ -10,13 +10,13 @@
 <form class="card" method="post" action="/my-tickets/new"{{if .Uploads}} enctype="multipart/form-data"{{end}}>
   <div class="card-content space-y-6 pt-6">
     <input type="hidden" name="csrf" value="{{.S.CSRF}}">
-    {{if .S.Projects}}
+    {{if .Projects}}
     <div class="space-y-2">
       <label for="project" class="label">Project</label>
       <div class="select-wrap">
-        <select id="project" name="project" class="select">
-          <option value="">Not about a specific project</option>
-          {{$p := .Project}}{{range .S.Projects}}<option value="{{.ID}}" {{if eq (print .ID) $p}}selected{{end}}>{{.Name}}</option>{{end}}
+        <select id="project" name="project" class="select"{{if not .AllowOrgLevel}} required{{end}}>
+          {{if .AllowOrgLevel}}<option value="">Not about a specific project</option>{{else}}<option value="" disabled {{if not .Project}}selected{{end}}>Choose a project</option>{{end}}
+          {{$p := .Project}}{{range .Projects}}<option value="{{.ID}}" {{if eq (print .ID) $p}}selected{{end}}>{{.Name}}</option>{{end}}
         </select>
         {{template "icon" "chevron-down"}}
       </div>

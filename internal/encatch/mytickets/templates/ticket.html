@@ -37,6 +37,7 @@
     </div>
   </div>
 
+  {{if .CanReply}}
   <form class="thread-reply" method="post" action="/my-tickets/{{.T.ReferenceNumber}}/reply{{.Filters}}"{{if .Uploads}} enctype="multipart/form-data"{{end}}>
     <input type="hidden" name="csrf" value="{{.S.CSRF}}">
     <label for="message" class="sr-only">{{if eq .TicketStatus "Resolved"}}Reply to reopen this ticket{{else}}Reply{{end}}</label>
@@ -51,6 +52,9 @@
     </div>
     {{template "secrets-warning" "hint"}}
   </form>
+  {{else}}
+  <div class="thread-reply"><p class="readonly-note">{{template "icon" "lock"}}<span>You have read-only access to this ticket. Ask your organisation admin for Manage access to reply.</span></p></div>
+  {{end}}
 </section>
 
 <aside class="details" aria-label="Ticket details">

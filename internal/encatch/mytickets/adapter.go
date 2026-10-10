@@ -5,7 +5,9 @@ package mytickets
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"path/filepath"
@@ -41,6 +43,17 @@ type LibredeskBackend struct {
 
 func (b *LibredeskBackend) RegisterOrg(instance, orgID, orgName string) (string, error) {
 	return b.OrgTiers.Seen(instance, orgID, orgName)
+}
+
+func (b *LibredeskBackend) LatestTicketOrg(contactID int, orgIDs []string) (string, error) {
+	var org string
+	err := b.DB.Get(&org, `SELECT c.custom_attributes->>'org_id' FROM conversations c
+		WHERE c.contact_id = $1 AND c.custom_attributes->>'org_id' = ANY($2)
+		ORDER BY c.created_at DESC LIMIT 1`, contactID, pq.Array(orgIDs))
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return org, err
 }
 
 func (b *LibredeskBackend) OrgTier(orgID string) (string, error) {
@@ -139,17 +152,12 @@ func scopeWhere(q ListQuery) (string, []any) {
 	case ScopeOrg:
 		conds = append(conds, "c.custom_attributes->>'org_id' = "+arg(q.OrgID))
 	case ScopeProject:
-		// The user's projects' tickets in the org, plus their own tickets (as in self scope),
-		// including org-level tickets they raised without a project.
-		org := arg(q.OrgID)
-		conds = append(conds, "((c.custom_attributes->>'org_id' = "+org+
-			" AND c.custom_attributes->>'project_id' = ANY("+arg(pq.Array(q.ProjectIDs))+"))"+
-			" OR (c.contact_id = "+arg(q.ContactID)+
-			" AND (c.custom_attributes->>'org_id' = "+org+" OR NOT (c.custom_attributes ? 'org_id'))))")
-	default:
+		// Project access only: their projects' tickets, never org-level ones.
 		conds = append(conds,
-			"c.contact_id = "+arg(q.ContactID),
-			"(c.custom_attributes->>'org_id' = "+arg(q.OrgID)+" OR NOT (c.custom_attributes ? 'org_id'))")
+			"c.custom_attributes->>'org_id' = "+arg(q.OrgID),
+			"c.custom_attributes->>'project_id' = ANY("+arg(pq.Array(q.ProjectIDs))+")")
+	default:
+		conds = append(conds, "FALSE") // no other scopes
 	}
 	if q.ProjectID != "" {
 		conds = append(conds, "c.custom_attributes->>'project_id' = "+arg(q.ProjectID))

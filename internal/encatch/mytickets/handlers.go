@@ -14,6 +14,7 @@ import (
 	"mime/multipart"
 	"net/url"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -154,21 +155,31 @@ func (s *Service) Login(r *fastglue.Request) error {
 	}
 	sess := Session{
 		ContactID: contactID, Email: claims.Email, Name: strings.TrimSpace(first + " " + last),
-		Issuer: claims.Issuer, Instance: claims.Instance, OrgID: string(claims.OrgID), OrgName: strings.TrimSpace(claims.OrgName),
-		Scope: claims.Scope, Projects: claims.Projects,
-		CurrentProjectID: string(claims.CurrentProjectID),
+		Issuer: claims.Issuer, Instance: claims.Instance, Orgs: claims.Orgs,
 	}
-	// The helpdesk owns support tiers (the token's support_tier is ignored).
-	if sess.SupportTier, err = s.backend.RegisterOrg(sess.Instance, sess.OrgID, sess.OrgName); err != nil {
-		s.lo.Error("my-tickets: registering org", "org", sess.OrgID, "error", err)
-		sess.SupportTier = ""
+	// Record every org (the helpdesk owns their support tiers) and open the org of the
+	// customer's most recent ticket, else the first by name.
+	orgIDs := make([]string, 0, len(sess.Orgs))
+	for _, o := range sess.Orgs {
+		orgIDs = append(orgIDs, string(o.ID))
+		if _, err := s.backend.RegisterOrg(sess.Instance, string(o.ID), o.Name); err != nil {
+			s.lo.Error("my-tickets: registering org", "org", o.ID, "error", err)
+		}
+	}
+	current, err := s.backend.LatestTicketOrg(contactID, orgIDs)
+	if err != nil {
+		s.lo.Error("my-tickets: finding the latest ticket's org", "error", err)
+	}
+	if current == "" || !sess.UseOrg(current) {
+		sort.SliceStable(sess.Orgs, func(i, j int) bool { return strings.ToLower(sess.Orgs[i].Name) < strings.ToLower(sess.Orgs[j].Name) })
+		sess.UseOrg(string(sess.Orgs[0].ID))
 	}
 	sid, err := s.store.Create(ctx, sess)
 	if err != nil {
 		s.lo.Error("my-tickets: creating session", "error", err)
 		return s.renderError(r, fasthttp.StatusInternalServerError, "Something went wrong. Please try again.")
 	}
-	s.lo.Info("my-tickets: sign-in", "iss", claims.Issuer, "instance", sess.Instance, "user", string(claims.ExternalUserID), "org", sess.OrgID, "scope", sess.Scope, "contact_id", contactID)
+	s.lo.Info("my-tickets: sign-in", "iss", claims.Issuer, "instance", sess.Instance, "user", string(claims.ExternalUserID), "orgs", len(sess.Orgs), "org", sess.OrgID, "scope", sess.Scope, "contact_id", contactID)
 
 	c := fasthttp.AcquireCookie()
 	defer fasthttp.ReleaseCookie(c)
@@ -233,7 +244,7 @@ func (s *Service) loadList(r *fastglue.Request, sess Session) (map[string]any, e
 	return map[string]any{
 		"S": sess, "Tickets": rows, "Status": status, "Project": project, "ProjectName": projectName,
 		"Search": search, "Filters": template.URL(filters), // #nosec G203: built by url.Values.Encode
-		"ShowRaisedBy": sess.Scope != ScopeSelf, "ShowProject": len(sess.Projects) > 0,
+		"ShowRaisedBy": true, "ShowProject": len(sess.Projects) > 0,
 	}, nil
 }
 
@@ -292,6 +303,7 @@ func (s *Service) renderTicket(r *fastglue.Request, sess Session, t TicketSummar
 	data["Problem"] = problem
 	data["Draft"] = draft
 	data["Uploads"] = s.uploadInfo()
+	data["CanReply"] = sess.CanManageTicket(t)
 	return s.render(r, fasthttp.StatusOK, "ticket.html", data)
 }
 
@@ -301,7 +313,23 @@ func (s *Service) NewForm(r *fastglue.Request) error {
 	if !ok {
 		return s.sessionEnded(r)
 	}
-	return s.renderNewForm(r, sess, "", "", sess.CurrentProjectID, "Normal", "")
+	if !sess.CanCreate() {
+		return s.renderReadOnly(r)
+	}
+	// Default to the only project when org-level tickets aren't an option.
+	project := ""
+	if mp := sess.ManageProjects(); !sess.CanManageOrg() && len(mp) == 1 {
+		project = string(mp[0].ID)
+	}
+	return s.renderNewForm(r, sess, "", "", project, "Normal", "")
+}
+
+// renderReadOnly explains that the customer can view but not raise tickets here.
+func (s *Service) renderReadOnly(r *fastglue.Request) error {
+	return s.render(r, fasthttp.StatusForbidden, "message.html", map[string]any{
+		"Title": "You have read-only access",
+		"Text":  "You can view this organisation's support tickets, but not raise new ones. Ask your organisation admin for Manage access to Org Tickets or Project Tickets.",
+	})
 }
 
 // Create handles the new-ticket form.
@@ -329,8 +357,14 @@ func (s *Service) Create(r *fastglue.Request) error {
 	case len(body) > maxMessageLen:
 		problem = fmt.Sprintf("Please keep the message under %d characters.", maxMessageLen)
 	}
+	if !sess.CanCreate() {
+		return s.renderReadOnly(r)
+	}
 	projectName, projectOK := sess.ProjectName(project)
-	if project != "" && !projectOK {
+	switch {
+	case project == "" && !sess.CanManageOrg():
+		problem = "Please choose one of your projects."
+	case project != "" && (!projectOK || !sess.CanManageProject(project)):
 		problem = "Please choose one of your projects."
 	}
 	files, fileProblem := s.readUploads(r)
@@ -376,6 +410,9 @@ func (s *Service) Reply(r *fastglue.Request) error {
 	t, ok := s.visibleTicket(r, sess)
 	if !ok {
 		return s.renderError(r, fasthttp.StatusNotFound, "We couldn't find that ticket.")
+	}
+	if !sess.CanManageTicket(t) {
+		return s.renderTicket(r, sess, t, "You have read-only access to this ticket, so you can't reply.", "")
 	}
 	body := strings.TrimSpace(string(r.RequestCtx.FormValue("message")))
 	files, problem := s.readUploads(r)
@@ -428,6 +465,28 @@ func (s *Service) Asset(r *fastglue.Request) error {
 	return nil
 }
 
+// SwitchOrg makes another of the session's orgs current.
+func (s *Service) SwitchOrg(r *fastglue.Request) error {
+	sid := string(r.RequestCtx.Request.Header.Cookie(cookieName))
+	sess, ok := s.session(r)
+	if !ok {
+		return s.sessionEnded(r)
+	}
+	if !CSRFValid(sess, string(r.RequestCtx.FormValue("csrf"))) {
+		return s.renderError(r, fasthttp.StatusForbidden, "Your form expired. Please go back and try again.")
+	}
+	if !sess.UseOrg(string(r.RequestCtx.FormValue("org"))) {
+		return s.renderError(r, fasthttp.StatusNotFound, "We couldn't find that organisation.")
+	}
+	ctx, cancel := redisCtx()
+	defer cancel()
+	if err := s.store.Update(ctx, sid, sess); err != nil {
+		s.lo.Error("my-tickets: switching org", "error", err)
+		return s.renderError(r, fasthttp.StatusInternalServerError, "Something went wrong. Please try again.")
+	}
+	return s.redirect(r, basePath)
+}
+
 // Logout ends the session.
 func (s *Service) Logout(r *fastglue.Request) error {
 	sid := string(r.RequestCtx.Request.Header.Cookie(cookieName))
@@ -477,6 +536,7 @@ func (s *Service) visibleTicket(r *fastglue.Request, sess Session) (TicketSummar
 func (s *Service) renderNewForm(r *fastglue.Request, sess Session, subject, body, project, priority, problem string) error {
 	return s.render(r, fasthttp.StatusOK, "new.html", map[string]any{
 		"S": sess, "Subject": subject, "Message": body, "Project": project, "Priority": priority, "Problem": problem,
+		"Projects": sess.ManageProjects(), "AllowOrgLevel": sess.CanManageOrg(),
 		"CanChoosePriority": PriorityEligible(s.orgTier(sess), s.eligibleTiers), "Priorities": PriorityChoices,
 		"Uploads": s.uploadInfo(),
 	})
@@ -586,7 +646,7 @@ func (s *Service) readUploads(r *fastglue.Request) ([]Upload, string) {
 
 func (s *Service) sessionEnded(r *fastglue.Request) error {
 	return s.render(r, fasthttp.StatusUnauthorized, "message.html", map[string]any{
-		"Title": "Your session has ended", "Text": "For your security, sessions last 8 hours. Open Support again from your Encatch app to continue.",
+		"Title": "Your session has ended", "Text": fmt.Sprintf("For your security, sessions last %s. Open Support again from Encatch to continue.", humanDuration(s.sessionTTL)),
 	})
 }
 
@@ -671,6 +731,18 @@ func mailDate(t, now time.Time) string {
 	default:
 		return t.Format("2 Jan 2006")
 	}
+}
+
+// humanDuration formats a session length for customers ("2 hours", "30 minutes").
+func humanDuration(d time.Duration) string {
+	if d >= time.Hour && d%time.Hour == 0 {
+		if h := int(d / time.Hour); h == 1 {
+			return "1 hour"
+		} else {
+			return fmt.Sprintf("%d hours", h)
+		}
+	}
+	return fmt.Sprintf("%d minutes", int(d.Round(time.Minute)/time.Minute))
 }
 
 // initials returns up to two letters for the sidebar avatar.
