@@ -24,27 +24,12 @@
   <div class="hidden px-3 pb-2 pt-2 md:block">
     <a class="btn btn-default w-full" href="/my-tickets/new">{{template "icon" "plus"}}New ticket</a>
   </div>
-  <nav class="sidebar-nav" aria-label="Tickets">
-    <div class="sidebar-group">
-      <p class="sidebar-label">Tickets</p>
-      <ul class="sidebar-menu">
-        <li><a class="sidebar-item {{if and $list (not $st)}}sidebar-item-active{{end}}" href="/my-tickets{{if $p}}?project={{$p}}{{end}}">{{template "icon" "inbox"}}All tickets</a></li>
-        <li><a class="sidebar-item {{if and $list (eq $st "Open")}}sidebar-item-active{{end}}" href="/my-tickets?status=Open{{if $p}}&amp;project={{$p}}{{end}}">{{template "icon" "open"}}Open</a></li>
-        <li><a class="sidebar-item {{if and $list (eq $st "Waiting on you")}}sidebar-item-active{{end}}" href="/my-tickets?status=Waiting+on+you{{if $p}}&amp;project={{$p}}{{end}}">{{template "icon" "waiting"}}Waiting on you</a></li>
-        <li><a class="sidebar-item {{if and $list (eq $st "Resolved")}}sidebar-item-active{{end}}" href="/my-tickets?status=Resolved{{if $p}}&amp;project={{$p}}{{end}}">{{template "icon" "resolved"}}Resolved</a></li>
-      </ul>
-    </div>
-    {{if .S.Projects}}
-    <div class="sidebar-group">
-      <p class="sidebar-label">Projects</p>
-      <ul class="sidebar-menu">
-        {{range .S.Projects}}{{$on := and $list (eq (print .ID) $p)}}
-        <li><a class="sidebar-item {{if $on}}sidebar-item-active{{end}}" {{if $on}}aria-current="true" title="Show all projects"{{end}} href="/my-tickets{{if $on}}{{if $st}}?status={{$st}}{{end}}{{else}}?{{if $st}}status={{$st}}&amp;{{end}}project={{.ID}}{{end}}">{{template "icon" "folder"}}<span class="truncate">{{.Name}}</span></a></li>
-        {{end}}
-      </ul>
-    </div>
-    {{end}}
-  </nav>
+  {{$nav := dict "S" .S "List" $list "St" $st "P" $p}}
+  <details class="nav-dropdown">
+    <summary>{{template "icon" "menu"}}<span class="flex-1 truncate">{{if $list}}{{or $st "All tickets"}}{{range .S.Projects}}{{if eq (print .ID) $p}} · {{.Name}}{{end}}{{end}}{{else}}Tickets{{end}}</span>{{template "icon" "chevron-down"}}</summary>
+    <nav class="nav-dropdown-menu" aria-label="Tickets">{{template "navmenu" $nav}}</nav>
+  </details>
+  <nav class="sidebar-nav" aria-label="Tickets">{{template "navmenu" $nav}}</nav>
   <div class="hidden items-center gap-3 border-t px-4 py-3 md:flex">
     <span class="avatar" aria-hidden="true">{{initials .S.Name .S.Email}}</span>
     <div class="min-w-0 flex-1 leading-tight">
@@ -69,6 +54,29 @@
 </div>
 </body>
 </html>
+{{end}}
+
+{{/* navmenu takes a dict: S, List (on the list page), St and P (current filters). */}}
+{{define "navmenu"}}{{$list := .List}}{{$st := .St}}{{$p := .P}}
+<div class="sidebar-group">
+  <p class="sidebar-label">Tickets</p>
+  <ul class="sidebar-menu">
+    <li><a class="sidebar-item {{if and $list (not $st)}}sidebar-item-active{{end}}" href="/my-tickets{{if $p}}?project={{$p}}{{end}}">{{template "icon" "inbox"}}All tickets</a></li>
+    <li><a class="sidebar-item {{if and $list (eq $st "Open")}}sidebar-item-active{{end}}" href="/my-tickets?status=Open{{if $p}}&amp;project={{$p}}{{end}}">{{template "icon" "open"}}Open</a></li>
+    <li><a class="sidebar-item {{if and $list (eq $st "Waiting on you")}}sidebar-item-active{{end}}" href="/my-tickets?status=Waiting+on+you{{if $p}}&amp;project={{$p}}{{end}}">{{template "icon" "waiting"}}Waiting on you</a></li>
+    <li><a class="sidebar-item {{if and $list (eq $st "Resolved")}}sidebar-item-active{{end}}" href="/my-tickets?status=Resolved{{if $p}}&amp;project={{$p}}{{end}}">{{template "icon" "resolved"}}Resolved</a></li>
+  </ul>
+</div>
+{{if .S.Projects}}
+<div class="sidebar-group">
+  <p class="sidebar-label">Projects</p>
+  <ul class="sidebar-menu">
+    {{range .S.Projects}}{{$on := and $list (eq (print .ID) $p)}}
+    <li><a class="sidebar-item {{if $on}}sidebar-item-active{{end}}" {{if $on}}aria-current="true" title="Show all projects"{{end}} href="/my-tickets{{if $on}}{{if $st}}?status={{$st}}{{end}}{{else}}?{{if $st}}status={{$st}}&amp;{{end}}project={{.ID}}{{end}}">{{template "icon" "folder"}}<span class="truncate">{{.Name}}</span></a></li>
+    {{end}}
+  </ul>
+</div>
+{{end}}
 {{end}}
 
 {{define "brand"}}<a href="/my-tickets" class="flex items-center gap-2.5 text-foreground">
@@ -96,4 +104,6 @@
 {{- else if eq . "plus"}}<path d="M5 12h14"/><path d="M12 5v14"/>
 {{- else if eq . "logout"}}<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>
 {{- else if eq . "chevron"}}<path d="m9 18 6-6-6-6"/>
+{{- else if eq . "chevron-down"}}<path d="m6 9 6 6 6-6"/>
+{{- else if eq . "menu"}}<line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/>
 {{- end}}</svg>{{end}}
