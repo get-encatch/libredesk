@@ -132,7 +132,12 @@ func TestVisible(t *testing.T) {
 	check("project sees teammate in project", proj, teammate, true)
 	check("project never sees other project", proj, teammateOtherProject, false)
 	check("project never crosses orgs", proj, otherOrgSameProjectID, false)
-	check("project skips email tickets", proj, mineEmail, false)
+	// Project users also see their own tickets, like self scope.
+	check("project sees own email ticket", proj, mineEmail, true)
+	check("project sees own org-level ticket", proj, TicketSummary{ContactID: 1, OrgID: "42"}, true)
+	check("project sees own ticket in another of the org's projects", proj, TicketSummary{ContactID: 1, OrgID: "42", ProjectID: "99"}, true)
+	check("project never sees teammate's org-level ticket", proj, TicketSummary{ContactID: 2, OrgID: "42"}, false)
+	check("project never sees own ticket in another org", proj, mineOtherOrg, false)
 	check("org sees teammate", org, teammateOtherProject, true)
 	check("org never crosses orgs", org, otherOrgSameProjectID, false)
 }
@@ -142,9 +147,10 @@ func TestScopeWhere(t *testing.T) {
 	if !strings.Contains(where, "c.contact_id = $1") || !strings.Contains(where, "NOT (c.custom_attributes ? 'org_id')") || len(args) != 2 {
 		t.Fatalf("self where = %q %v", where, args)
 	}
-	where, args = scopeWhere(ListQuery{Scope: ScopeProject, OrgID: "42", ProjectIDs: []string{"17"}})
-	if !strings.Contains(where, "'org_id' = $1") || !strings.Contains(where, "ANY($2)") || len(args) != 2 {
-		t.Fatalf("project where = %q", where)
+	where, args = scopeWhere(ListQuery{Scope: ScopeProject, ContactID: 5, OrgID: "42", ProjectIDs: []string{"17"}})
+	if !strings.Contains(where, "'org_id' = $1 AND c.custom_attributes->>'project_id' = ANY($2)") ||
+		!strings.Contains(where, "OR (c.contact_id = $3") || len(args) != 3 || args[2] != 5 {
+		t.Fatalf("project where = %q %v", where, args)
 	}
 	where, _ = scopeWhere(ListQuery{Scope: ScopeOrg, OrgID: "42", ProjectID: "17"})
 	if strings.Contains(where, "contact_id") || !strings.Contains(where, "'project_id' = $2") {

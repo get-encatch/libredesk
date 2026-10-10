@@ -129,9 +129,13 @@ func scopeWhere(q ListQuery) (string, []any) {
 	case ScopeOrg:
 		conds = append(conds, "c.custom_attributes->>'org_id' = "+arg(q.OrgID))
 	case ScopeProject:
-		conds = append(conds,
-			"c.custom_attributes->>'org_id' = "+arg(q.OrgID),
-			"c.custom_attributes->>'project_id' = ANY("+arg(pq.Array(q.ProjectIDs))+")")
+		// The user's projects' tickets in the org, plus their own tickets (as in self scope),
+		// including org-level tickets they raised without a project.
+		org := arg(q.OrgID)
+		conds = append(conds, "((c.custom_attributes->>'org_id' = "+org+
+			" AND c.custom_attributes->>'project_id' = ANY("+arg(pq.Array(q.ProjectIDs))+"))"+
+			" OR (c.contact_id = "+arg(q.ContactID)+
+			" AND (c.custom_attributes->>'org_id' = "+org+" OR NOT (c.custom_attributes ? 'org_id'))))")
 	default:
 		conds = append(conds,
 			"c.contact_id = "+arg(q.ContactID),

@@ -187,15 +187,19 @@ func Visible(s Session, t TicketSummary) bool {
 	switch s.Scope {
 	case ScopeOrg:
 		return t.OrgID == s.OrgID
-	case ScopeProject:
-		if t.OrgID != s.OrgID {
-			return false
+	case ScopeProject: // their projects' tickets, plus their own (as in self scope)
+		if _, ok := s.ProjectName(t.ProjectID); ok && t.ProjectID != "" && t.OrgID == s.OrgID {
+			return true
 		}
-		_, ok := s.ProjectName(t.ProjectID)
-		return ok && t.ProjectID != ""
-	default: // self: own tickets for this org, plus own tickets with no org (email)
-		return t.ContactID == s.ContactID && (t.OrgID == s.OrgID || t.OrgID == "")
+		return ownTicket(s, t)
+	default:
+		return ownTicket(s, t)
 	}
+}
+
+// ownTicket: the user's own tickets for this org, plus their own tickets with no org (email).
+func ownTicket(s Session, t TicketSummary) bool {
+	return t.ContactID == s.ContactID && (t.OrgID == s.OrgID || t.OrgID == "")
 }
 
 // PriorityEligible reports whether a tier may choose Express/Urgent.
