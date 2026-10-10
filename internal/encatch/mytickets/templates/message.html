@@ -1,6 +1,8 @@
 {{define "message.html"}}{{template "head" (dict "Title" .Title "S" nil)}}
-<div class="card" style="max-width:520px;margin:40px auto;padding:28px">
-<h1>{{.Title}}</h1>
-<p class="sub" style="margin:8px 0 0">{{.Text}}</p>
+<div class="card mx-auto mt-10 max-w-md">
+  <div class="card-header">
+    <h1 class="card-title text-xl">{{.Title}}</h1>
+    <p class="card-description leading-relaxed">{{.Text}}</p>
+  </div>
 </div>
 {{template "foot"}}{{end}}

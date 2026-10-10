@@ -3,7 +3,9 @@ package mytickets
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"html"
@@ -19,6 +21,18 @@ import (
 
 //go:embed templates/*.html
 var templateFS embed.FS
+
+// app.css is built from ui/ (Tailwind + libredesk's shadcn tokens); run ui/build.sh
+// after changing templates.
+//
+//go:embed static/app.css
+var appCSS []byte
+
+// cssVersion busts browser caches when the stylesheet changes.
+var cssVersion = func() string {
+	sum := sha256.Sum256(appCSS)
+	return hex.EncodeToString(sum[:])[:12]
+}()
 
 const (
 	cookieName     = "libredesk_my_tickets"
@@ -61,17 +75,8 @@ func New(o Opts) (*Service, error) {
 			}
 			return m
 		},
-		"date": func(t time.Time) string { return t.In(ist).Format("2 Jan 2006, 15:04") },
-		"statusClass": func(s string) string {
-			switch s {
-			case StatusWaitingYou:
-				return "waiting"
-			case StatusResolved:
-				return "resolved"
-			default:
-				return "open"
-			}
-		},
+		"date":       func(t time.Time) string { return t.In(ist).Format("2 Jan 2006, 15:04") },
+		"cssVersion": func() string { return cssVersion },
 	}
 	tmpl, err := template.New("").Funcs(funcs).ParseFS(templateFS, "templates/*.html")
 	if err != nil {
@@ -303,6 +308,15 @@ func (s *Service) Reply(r *fastglue.Request) error {
 		return s.renderError(r, fasthttp.StatusInternalServerError, "We couldn't send your reply. Please try again.")
 	}
 	return s.redirect(r, basePath+"/"+t.ReferenceNumber+"?sent=1")
+}
+
+// CSS serves the stylesheet. URLs carry ?v=<hash>, so it can be cached long-term.
+func (s *Service) CSS(r *fastglue.Request) error {
+	r.RequestCtx.Response.Header.Set("Cache-Control", "public, max-age=31536000, immutable")
+	r.RequestCtx.Response.Header.Set("X-Content-Type-Options", "nosniff")
+	r.RequestCtx.SetContentType("text/css; charset=utf-8")
+	r.RequestCtx.SetBody(appCSS)
+	return nil
 }
 
 // Logout ends the session.

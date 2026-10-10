@@ -5,45 +5,26 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>{{.Title}} · Encatch Support</title>
-<style>
-:root{--bg:#f7f7f8;--card:#fff;--text:#18181b;--muted:#52525b;--line:#e4e4e7;--accent:#2d6a4f;--accent-ink:#fff;
---open:#1d4ed8;--open-bg:#dbeafe;--wait:#92400e;--wait-bg:#fef3c7;--done:#3f3f46;--done-bg:#e4e4e7;--err:#b91c1c;--err-bg:#fee2e2}
-@media (prefers-color-scheme:dark){:root{--bg:#111113;--card:#1c1c1f;--text:#f4f4f5;--muted:#a1a1aa;--line:#2e2e33;--accent:#74c69d;--accent-ink:#0b1f16;
---open:#93c5fd;--open-bg:#172554;--wait:#fcd34d;--wait-bg:#3b2a07;--done:#d4d4d8;--done-bg:#27272a;--err:#fca5a5;--err-bg:#3f1414}}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
-a{color:var(--accent)}
-header{background:var(--card);border-bottom:1px solid var(--line)}
-.bar{max-width:880px;margin:0 auto;padding:14px 16px;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
-.brand{font-weight:600;font-size:16px;color:var(--text);text-decoration:none}
-.who{color:var(--muted);font-size:13px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-main{max-width:880px;margin:0 auto;padding:24px 16px 48px}
-h1{font-size:22px;margin:0 0 4px}
-.sub{color:var(--muted);margin:0 0 20px;font-size:14px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px}
-.btn{display:inline-block;background:var(--accent);color:var(--accent-ink);border:0;border-radius:8px;padding:9px 16px;font:inherit;font-weight:600;text-decoration:none;cursor:pointer}
-.btn.quiet{background:transparent;color:var(--muted);border:1px solid var(--line);font-weight:500;padding:6px 12px}
-.badge{display:inline-block;font-size:12px;font-weight:600;padding:2px 10px;border-radius:999px;white-space:nowrap}
-.badge.open{color:var(--open);background:var(--open-bg)}.badge.waiting{color:var(--wait);background:var(--wait-bg)}.badge.resolved{color:var(--done);background:var(--done-bg)}
-.notice{border-radius:8px;padding:10px 14px;margin:0 0 16px;font-size:14px}
-.notice.err{color:var(--err);background:var(--err-bg)}.notice.ok{color:var(--accent);border:1px solid var(--line)}
-label{display:block;font-weight:600;font-size:14px;margin:16px 0 6px}
-input[type=text],select,textarea{width:100%;font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 11px}
-textarea{min-height:160px;resize:vertical}
-.hint{color:var(--muted);font-size:13px;margin:4px 0 0}
-.inline{display:inline}
-</style>
+<link rel="preload" href="/static/public/static/fonts/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/static/public/static/fonts.css">
+<link rel="stylesheet" href="/my-tickets/assets/app.css?v={{cssVersion}}">
 </head>
-<body>
-<header><div class="bar">
-<a class="brand" href="/my-tickets">Encatch Support</a>
-{{with .S}}<div class="who"><span>{{.Name}} · {{.OrgName}}</span>
-<form class="inline" method="post" action="/my-tickets/logout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="btn quiet" type="submit">Sign out</button></form></div>{{end}}
-</div></header>
-<main>
+<body class="min-h-screen">
+<header class="sticky top-0 z-10 border-b bg-background/95 backdrop-blur">
+  <div class="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-3 px-4 py-3">
+    <a href="/my-tickets" class="text-base font-semibold tracking-tight text-foreground">Encatch Support</a>
+    {{with .S}}<div class="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+      <span>{{.Name}} · {{.OrgName}}</span>
+      <form method="post" action="/my-tickets/logout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="btn btn-outline btn-sm" type="submit">Sign out</button></form>
+    </div>{{end}}
+  </div>
+</header>
+<main class="mx-auto max-w-3xl px-4 pb-16 pt-8">
 {{end}}
 
 {{define "foot"}}</main>
 </body>
 </html>
 {{end}}
+
+{{define "status"}}<span class="badge {{if eq . "Waiting on you"}}badge-waiting{{else if eq . "Resolved"}}badge-resolved{{else}}badge-open{{end}}">{{.}}</span>{{end}}
