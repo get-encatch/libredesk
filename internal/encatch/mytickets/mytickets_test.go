@@ -857,6 +857,49 @@ func TestAccess(t *testing.T) {
 		}
 	})
 
+	t.Run("a ticket link from another of the user's orgs switches to it", func(t *testing.T) {
+		h.be.tickets["400"] = TicketSummary{UUID: "u400", ReferenceNumber: "400", ContactID: 50, OrgID: "prod-99", Subject: "Not yours", InternalStatus: "Open", CreatedAt: now}
+		h.be.msgs["u201"] = []Message{{FromCustomer: true, HTML: "x"}}
+		// Opens in Acme (latest ticket); BigCorp access is the Mobile app project only.
+		sid, sess := h.signIn([]map[string]any{
+			{"id": 7, "name": "Acme", "access": "manage"},
+			{"id": 42, "name": "BigCorp", "access": "", "projects": []map[string]any{{"id": 17, "name": "Mobile app", "access": "manage"}}}})
+		current := func() string {
+			got, _ := h.svc.store.Get(context.Background(), sid)
+			return got.OrgID
+		}
+		if current() != "prod-7" {
+			t.Fatalf("opened %q, want prod-7", current())
+		}
+		notFound := func(ref string) string {
+			resp := h.do(h.svc.View, "GET", "/my-tickets/"+ref, sid, "", map[string]string{"ref": ref})
+			if resp.StatusCode() != fasthttp.StatusNotFound {
+				t.Fatalf("ticket %s: %d, want 404", ref, resp.StatusCode())
+			}
+			return string(resp.Body())
+		}
+		// Org-level BigCorp ticket: not visible with project access there, so no switch.
+		hidden := notFound("200")
+		// Another org's ticket, and a ticket that doesn't exist: the same page, no switch.
+		if notFound("400") != hidden || notFound("9999") != hidden || current() != "prod-7" {
+			t.Fatal("refused tickets differ from a missing one, or the org switched")
+		}
+		// A reply from a tab still showing BigCorp's ticket goes through and switches.
+		if resp := h.do(h.svc.Reply, "POST", "/my-tickets/201/reply", sid, "csrf="+sess.CSRF+"&message=from+an+old+tab", map[string]string{"ref": "201"}); resp.StatusCode() != fasthttp.StatusSeeOther || len(h.be.msgs["u201"]) != 2 {
+			t.Fatalf("reply from another org's tab: %d", resp.StatusCode())
+		}
+		if current() != "prod-42" {
+			t.Fatalf("after the reply the session is in %q, want prod-42", current())
+		}
+		// And back: a link to the Acme ticket opens it and switches again.
+		if resp := h.do(h.svc.View, "GET", "/my-tickets/300", sid, "", map[string]string{"ref": "300"}); resp.StatusCode() != fasthttp.StatusOK || !strings.Contains(string(resp.Body()), "Acme question") {
+			t.Fatalf("Acme ticket link: %d", resp.StatusCode())
+		}
+		if current() != "prod-7" {
+			t.Fatalf("after the Acme link the session is in %q", current())
+		}
+	})
+
 	t.Run("orgs without access never reach the session", func(t *testing.T) {
 		c := baseClaims()
 		c["orgs"] = []map[string]any{{"id": 5, "name": "None", "access": "", "projects": []map[string]any{{"id": 1, "name": "P", "access": ""}}}}

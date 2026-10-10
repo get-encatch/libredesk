@@ -268,7 +268,7 @@ func (s *Service) View(r *fastglue.Request) error {
 	if !ok {
 		return s.sessionEnded(r)
 	}
-	t, ok := s.visibleTicket(r, sess)
+	t, ok := s.visibleTicket(r, &sess)
 	if !ok {
 		return s.renderError(r, fasthttp.StatusNotFound, "We couldn't find that ticket.")
 	}
@@ -407,7 +407,7 @@ func (s *Service) Reply(r *fastglue.Request) error {
 	if !CSRFValid(sess, string(r.RequestCtx.FormValue("csrf"))) {
 		return s.renderError(r, fasthttp.StatusForbidden, "Your form expired. Please go back and try again.")
 	}
-	t, ok := s.visibleTicket(r, sess)
+	t, ok := s.visibleTicket(r, &sess)
 	if !ok {
 		return s.renderError(r, fasthttp.StatusNotFound, "We couldn't find that ticket.")
 	}
@@ -521,15 +521,33 @@ func (s *Service) session(r *fastglue.Request) (Session, bool) {
 	return sess, true
 }
 
-func (s *Service) visibleTicket(r *fastglue.Request, sess Session) (TicketSummary, bool) {
+// visibleTicket loads the ticket in the URL if the session may see it. A ticket in
+// another of the session's orgs (a link opened while a different org was selected)
+// switches the session to that org, if the user's access there shows it. Anything
+// else is "not found", whether or not the ticket exists.
+func (s *Service) visibleTicket(r *fastglue.Request, sess *Session) (TicketSummary, bool) {
 	ref, _ := r.RequestCtx.UserValue("ref").(string)
 	if ref == "" || len(ref) > 64 {
 		return TicketSummary{}, false
 	}
 	t, err := s.backend.GetTicket(ref)
-	if err != nil || !Visible(sess, t) {
+	if err != nil {
 		return TicketSummary{}, false
 	}
+	if Visible(*sess, t) {
+		return t, true
+	}
+	switched := *sess
+	if t.OrgID == "" || !switched.UseOrg(t.OrgID) || !Visible(switched, t) {
+		return TicketSummary{}, false
+	}
+	ctx, cancel := redisCtx()
+	defer cancel()
+	if err := s.store.Update(ctx, string(r.RequestCtx.Request.Header.Cookie(cookieName)), switched); err != nil {
+		s.lo.Error("my-tickets: switching org for a ticket link", "error", err)
+		return TicketSummary{}, false
+	}
+	*sess = switched
 	return t, true
 }
 
