@@ -6,14 +6,18 @@ This repo is **get-encatch/libredesk**, the Encatch (CMSS) fork of [abhinavxd/li
 
 - `origin` = get-encatch/libredesk (our fork). `upstream` = abhinavxd/libredesk.
 - `release/v2.8.0` is an untouched copy of the upstream `v2.8.0` tag (`086b082`). Never commit our changes to `release/*` branches.
-- Our feature work goes on our own integration branch `encatch/main` (the default branch on GitHub), created from `release/v2.8.0`.
+- Our integration branch is `encatch/main` (the default branch on GitHub), created from `release/v2.8.0`. Changes reach it only through pull requests (since 2026-10-10):
+  - One branch per piece of work, from `encatch/main`: `feat/...`, `fix/...`, `chore/...`, or `merge/vX.Y.Z` for upstream releases.
+  - Open a PR into `encatch/main`; the Go CI check (`test`) must pass. No review approval is required (single maintainer).
+  - Merge with a merge commit; squash and rebase merges are switched off, so upstream merges keep their history.
+  - Repository admins can bypass in an emergency; say so in the commit message if you do.
 - `main` mirrors upstream `main`, which is unreleased code. Do not build from it or deploy it.
 - Upstream releases are git tags (`vX.Y.Z`) cut from upstream `main`. There are no upstream release branches.
 
 ## Pulling upstream releases
 
 - Merge **stable release tags only**, never upstream `main` or `-rc` tags:
-  `git fetch upstream --tags && git merge vX.Y.Z`
+  `git fetch upstream --tags && git switch -c merge/vX.Y.Z encatch/main && git merge vX.Y.Z`, then a PR into `encatch/main` merged with a merge commit
 - Use merge, not rebase, on shared branches.
 - Merge each release as it ships, so we never fall several versions behind.
 - Security fixes taken ahead of a release (2026-10-10, Dependabot triage): cherry-picked upstream `908f3413` (qs 6.16.0) and `92954f1d` (axios 1.20.0) with `-x`; they merge cleanly when the release containing them arrives. Our own lockfile-only update moved prosemirror-view to 1.42.6 (with prosemirror-model 1.25.12) and nanoid to 5.1.16. If `frontend/pnpm-lock.yaml` conflicts on the next merge, take upstream's lockfile, run `pnpm install`, and check prosemirror-view is still >= 1.42.3 with a single prosemirror-model.
@@ -43,7 +47,7 @@ This repo is **get-encatch/libredesk**, the Encatch (CMSS) fork of [abhinavxd/li
 
 ## GitHub repository security (set 2026-10-10)
 
-- Rulesets: "Protect branches" (no force-push or deletion of `encatch/main`, `main`, `release/*`, no bypass); "Release tags: immutable" (`v*` tags can't be moved or deleted by anyone); "Release tags: who can create" (only org admins create `v*` tags). Syncing upstream tags into the fork therefore needs an org admin.
+- Rulesets: "Protect branches" (no force-push or deletion of `encatch/main`, `main`, `release/*`, no bypass); "Release tags: immutable" (`v*` tags can't be moved or deleted by anyone); "Release tags: who can create" (only org admins create `v*` tags); "encatch/main: changes through PRs with CI" (PR required, Go `test` check must pass, merge commits only, repository admins may bypass). Syncing upstream tags into the fork therefore needs an org admin.
 - Production environment: reviewer godwinpinto only, branch `encatch/main` only, admins can't bypass.
 - Actions: approval required for all outside contributors' workflows; only GitHub-owned, verified, and the listed actions (goreleaser, docker, crowdin) may run. A new third-party action must be added under Settings > Actions first.
 - Secret scanning with push protection, Dependabot alerts and security updates, and private vulnerability reporting are on. Our policy is `.github/SECURITY.md` (GitHub shows it before upstream's root `SECURITY.md`, which stays untouched). Upstream's PR-welcome workflow is disabled in GitHub (not edited).
@@ -72,7 +76,7 @@ All marked `encatch:`. Keep this list current.
 - `frontend/apps/main/src/router/index.js` and `constants/navigation.js`: two routes and two sidebar entries: Admin > Teammates > Removal log (`/admin/teams/removal-log`, permission `activity_logs:manage`) and Admin > Workspace > Customer organisations (`/admin/customer-organisations`, permission `sla:manage`). Their titles are plain strings used as i18n keys, so no upstream translation files change.
 - Database index `encatch_conversations_org_activity` on upstream's `conversations` table (org id from `custom_attributes`, `last_interaction_at`, `id`), created at startup by `mytickets.EnsureIndexes` (`CONCURRENTLY`, in the background; an invalid one is rebuilt). It serves the paged My Tickets list. No upstream file changes; when merging, check upstream still sets `last_interaction_at` for customer-visible messages only (`update-conversation-last-message`) and hasn't added a clashing index.
 - Per-instance message gates (`internal/encatch/instancegate`, set in `cmd/encatch_mytickets.go` from `my_tickets.email_instances`, `agent_notification_instances`, `ai_email_instances`): `internal/conversation/message.go` (`sendOutgoingMessage` skips the email send) and `conversation.go` (`SendTransientEmail`, AI agent) call `internal/conversation/encatch.go`; `internal/notification/dispatcher.go` (`Send`, `SendWithEmails`) calls `internal/notification/encatch.go`. If upstream adds another path that emails customers or notifies agents, gate it too.
-- `.goreleaser.yaml`: builds only linux/amd64 and publishes only to `ghcr.io/get-encatch/libredesk` (see Releases above). `.github/workflows/release.yml`: runs only on `v*-encatch.*` tags, no Docker Hub.
+- `.goreleaser.yaml`: builds only linux/amd64 and publishes only to `ghcr.io/get-encatch/libredesk` (see Releases above). `.github/workflows/release.yml`: runs only on `v*-encatch.*` tags, no Docker Hub. `.github/workflows/frontend-ci.yml`: also runs on PRs into `encatch/main`.
 
 Our own code (new files only): `internal/encatch/mytickets/` (My Tickets: signed-token customer pages; `adapter.go` is the only file there that calls libredesk code; shadcn component styles with Encatch's design tokens via Tailwind (tokens in `ui/app.css`; logos in `static/`, light SVG and dark PNG from encatch.com): after editing `templates/` run `ui/build.sh` and commit `static/app.css`; preview locally with `go run ./internal/encatch/mytickets/devpreview` on http://localhost:8790) and `cmd/encatch_mytickets.go` (wiring, routes, config). Tickets from instances not listed in `my_tickets.email_instances` (prod only) don't email the customer, those not in `agent_notification_instances` (dev, uat, prod) don't notify agents, and `ai_email_instances` (none) gates AI agent emails; gated tickets get a private note for agents. Org and project names are stored on each ticket when it's raised; every Support sign-in rewrites them on that org's tickets if they changed in Encatch (`SyncNames`), and My Tickets always shows the current project name. Each ticket from My Tickets gets the attribute `encatch_instance` and the tag `instance:<code>` (e.g. `instance:prod`, created when missing), added by the System agent just before the customer's first message so the inbox list still previews the customer's text. Customer attachments are stored like agent uploads (private media, signed links) and must pass both libredesk's upload settings and `my_tickets.allowed_extensions`, with `my_tickets.max_total_upload_mb` (50) for all files of one message. `app.server.max_body_size` is set above 5 × libredesk's per-file limit so oversized uploads get a friendly message instead of a bare 413; raise it if that limit goes up.
 
