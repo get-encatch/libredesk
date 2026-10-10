@@ -865,3 +865,19 @@ func TestAccess(t *testing.T) {
 		}
 	})
 }
+
+func TestDisplaySubject(t *testing.T) {
+	for _, c := range []struct{ subject, ref, format, want string }{
+		{"Question about new project - #125", "125", "", "Question about new project"},
+		{"Question about new project - #125", "125", "#{ref}", "Question about new project"},
+		{"Login fails - [ENC-125]", "125", "[ENC-{ref}]", "Login fails"},
+		{"Login fails - #125", "126", "", "Login fails - #125"},   // another ticket's number stays
+		{"Renamed by an agent", "125", "", "Renamed by an agent"}, // no suffix: unchanged
+		{"Price - #125 - #125", "125", "", "Price - #125"},        // only the appended one goes
+		{" - #125", "125", "", " - #125"},                         // never leaves an empty subject
+	} {
+		if got := DisplaySubject(c.subject, c.ref, c.format); got != c.want {
+			t.Errorf("DisplaySubject(%q, %q, %q) = %q, want %q", c.subject, c.ref, c.format, got, c.want)
+		}
+	}
+}

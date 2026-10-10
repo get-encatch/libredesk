@@ -142,6 +142,20 @@ func (s Session) ProjectName(id string) (string, bool) {
 	return "", false
 }
 
+// DisplaySubject drops the ticket number libredesk appends to new subjects
+// ("Login fails - #125"), since My Tickets shows the number on its own. format is
+// libredesk's conversation.subject_ref_format ("#{ref}" when empty).
+func DisplaySubject(subject, ref, format string) string {
+	if format == "" {
+		format = "#{ref}"
+	}
+	trimmed := strings.TrimSuffix(subject, " - "+strings.ReplaceAll(format, "{ref}", ref))
+	if strings.TrimSpace(trimmed) == "" {
+		return subject
+	}
+	return trimmed
+}
+
 // TicketSummary is one row of the ticket list.
 type TicketSummary struct {
 	UUID            string

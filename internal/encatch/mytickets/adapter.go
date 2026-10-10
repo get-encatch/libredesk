@@ -42,6 +42,8 @@ type LibredeskBackend struct {
 	InboxID       int
 	OrgTiers      *orgtiers.Store // our own package: support tiers per org
 	Logger        *logf.Logger
+	// libredesk's conversation.subject_ref_format, to show subjects without the number.
+	SubjectRefFormat string
 }
 
 func (b *LibredeskBackend) RegisterOrg(instance, orgID, orgName string) (string, error) {
@@ -197,7 +199,8 @@ func (b *LibredeskBackend) ListTickets(q ListQuery) ([]TicketSummary, error) {
 	out := make([]TicketSummary, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, TicketSummary{
-			UUID: r.UUID, ReferenceNumber: r.ReferenceNumber, Subject: r.Subject, InternalStatus: r.Status,
+			UUID: r.UUID, ReferenceNumber: r.ReferenceNumber, InternalStatus: r.Status,
+			Subject:   DisplaySubject(r.Subject, r.ReferenceNumber, b.SubjectRefFormat),
 			ContactID: r.ContactID, RaisedBy: r.RaisedBy, OrgID: r.OrgID, ProjectID: r.ProjectID,
 			ProjectName: r.ProjectName, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 			LastFromCustomer: r.LastFromCustomer, LastAuthorID: r.LastAuthorID, LastAuthor: r.LastAuthor,
@@ -221,7 +224,8 @@ func (b *LibredeskBackend) GetTicket(referenceNumber string) (TicketSummary, err
 		updated = c.LastMessageAt.Time
 	}
 	return TicketSummary{
-		UUID: c.UUID, ReferenceNumber: c.ReferenceNumber, Subject: c.Subject.String, InternalStatus: c.Status.String,
+		UUID: c.UUID, ReferenceNumber: c.ReferenceNumber, InternalStatus: c.Status.String,
+		Subject:   DisplaySubject(c.Subject.String, c.ReferenceNumber, b.SubjectRefFormat),
 		ContactID: c.ContactID, RaisedBy: strings.TrimSpace(c.Contact.FirstName + " " + c.Contact.LastName),
 		OrgID: attrString(attrs, AttrOrgID), ProjectID: attrString(attrs, AttrProjectID),
 		ProjectName: attrString(attrs, AttrProjectName), CreatedAt: c.CreatedAt, UpdatedAt: updated,
