@@ -115,7 +115,22 @@
   .inbox-items { @apply divide-y lg:flex-1 lg:overflow-y-auto; }
   .inbox-item { @apply flex flex-col gap-1.5 px-4 py-3 transition-colors hover:bg-accent; }
   .inbox-item-active { @apply bg-accent; }
-  .inbox-empty { @apply flex-1 items-center justify-center p-8; }
+  /* List page (no ticket open): from lg the list fills the width as one-line rows.
+     The column template differs with the optional Project and Raised by columns. */
+  .inbox-list-wide { @apply lg:w-auto lg:flex-1 lg:border-r-0 xl:w-auto; }
+  .inbox-list-wide .inbox-list-head { @apply lg:flex lg:items-center lg:justify-between lg:gap-6 lg:space-y-0 lg:px-6 lg:py-4; }
+  .inbox-list-wide .search { @apply lg:w-80 lg:shrink-0; }
+  .inbox-list-wide { --cols: 13rem minmax(0, 1fr) 8.5rem 4.5rem; }
+  @screen xl {
+    .inbox-list-wide.has-project { --cols: 13rem minmax(0, 1fr) 9rem 8.5rem 4.5rem; }
+    .inbox-list-wide.has-raised { --cols: 13rem minmax(0, 1fr) 10rem 8.5rem 4.5rem; }
+    .inbox-list-wide.has-project.has-raised { --cols: 13rem minmax(0, 1fr) 9rem 10rem 8.5rem 4.5rem; }
+  }
+  .inbox-cols { @apply hidden gap-4 border-b px-6 py-2 text-xs font-medium text-muted-foreground lg:grid; grid-template-columns: var(--cols); }
+  .inbox-row { @apply hidden items-center gap-4 px-6 py-2.5 text-sm transition-colors hover:bg-accent lg:grid; grid-template-columns: var(--cols); }
+  .inbox-row-unread { @apply font-semibold; }
+  .inbox-row-unread .subject { @apply font-semibold; }
+  .inbox-row .subject { @apply font-medium; }
   .search { @apply relative; }
   .search > .icon { @apply pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground; }
   .search > .input { @apply pl-8; }

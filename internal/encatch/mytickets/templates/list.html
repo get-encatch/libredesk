@@ -1,11 +1,3 @@
 {{define "list.html"}}{{template "head" (dict "Title" "Your tickets" "S" .S "Nav" "list" "Status" .Status "Project" .Project "Wide" true)}}
 {{template "inbox-list" .}}
-<section class="inbox-empty hidden lg:flex">
-  <div class="max-w-xs text-center">
-    <span class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-accent text-accent-foreground">{{template "icon" "message"}}</span>
-    <p class="font-medium">Select a ticket to read it</p>
-    <p class="mt-1 text-sm text-muted-foreground">{{if eq .S.Scope "org"}}You can see every ticket for {{.S.OrgName}}.{{else if eq .S.Scope "project"}}You can see tickets for your projects in {{.S.OrgName}}.{{else}}You can see the tickets you raised for {{.S.OrgName}}.{{end}}</p>
-    <a class="btn btn-default mt-5" href="/my-tickets/new">{{template "icon" "plus"}}New ticket</a>
-  </div>
-</section>
 {{template "foot"}}{{end}}
