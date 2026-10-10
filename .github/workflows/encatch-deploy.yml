@@ -7,6 +7,9 @@
 # here can reach the server. The agent reports progress at STATUS_URL, which this job
 # watches to mark the deployment success or failure.
 #
+# After a successful deploy it publishes the tag's draft GitHub Release (marked
+# Latest only if it's the newest version, so a rollback doesn't become Latest).
+#
 # Run it by hand (Actions > Deploy > Run workflow) to deploy or roll back to any
 # existing release tag; approval is still required.
 name: Deploy
@@ -35,6 +38,9 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write     # publish the draft GitHub Release after a successful deploy
+      deployments: write
     environment:
       name: production
       url: https://desk.encatch.com
@@ -92,3 +98,14 @@ jobs:
           status error "The server didn't report back within 30 minutes"
           echo "::error::No report from the server; check 'journalctl -u encatch-deploy' there"
           exit 1
+
+      - name: Publish the GitHub Release
+        run: |
+          draft=$(gh release view "$VERSION" --repo "$REPO" --json isDraft --jq .isDraft 2>/dev/null || echo missing)
+          if [ "$draft" = missing ]; then echo "No GitHub Release for $VERSION; nothing to publish"; exit 0; fi
+          if [ "$draft" != true ]; then echo "Release $VERSION is already published"; exit 0; fi
+          current=$(gh release view --repo "$REPO" --json tagName --jq .tagName 2>/dev/null || true)
+          newest=$(printf '%s\n%s\n' "$current" "$VERSION" | sed '/^$/d' | sort -V | tail -1)
+          latest=false; [ "$newest" = "$VERSION" ] && latest=true
+          gh release edit "$VERSION" --repo "$REPO" --draft=false --latest="$latest" > /dev/null
+          echo "Published release $VERSION (latest: $latest)"

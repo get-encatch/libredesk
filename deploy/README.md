@@ -65,7 +65,8 @@ systemd timers. Leave out `--with-caddy` until DNS points at the server and port
    sets `LIBREDESK_VERSION`, pulls and restarts the app (Caddy too if its config changed; never
    Postgres or Redis), and checks `/health` on both domains. If unhealthy it restores the previous
    files and version.
-4. The workflow shows the result; the repo's **Environments > production** page keeps the history.
+4. The workflow shows the result and, on success, publishes the tag's draft GitHub Release (marked
+   Latest only if it's the newest version). The repo's **Environments > production** page keeps the history.
 
 - **Roll back / redeploy:** Actions > Deploy > Run workflow with an existing tag (approval required).
 - **Logs on the server:** `journalctl -u encatch-deploy -n 100`. Status: `deploy-state/public/status.json`
@@ -73,7 +74,6 @@ systemd timers. Leave out `--with-caddy` until DNS points at the server and port
 - **Security:** the server holds no GitHub credentials and accepts no inbound deploy connections. It
   reads deployments from GitHub's public API and only accepts ones created by the workflow
   (`github-actions[bot]`, task `deploy:encatch`) for a `vX.Y.Z-encatch.N` tag, approved within 6 hours.
-- **Release the GitHub Release** (draft) by hand when you want it public; it doesn't affect deploys.
 - Changes to Postgres or Redis in `docker-compose.yml` are installed but not applied; apply them by hand.
 
 ## Backups
