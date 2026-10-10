@@ -30,6 +30,13 @@ export const adminNavItems = [
         permission: 'sla:manage',
         isTitleKeyPlural: true,
         icon: 'Timer'
+      },
+      // encatch: support tier per Encatch org (untranslated title; vue-i18n shows the key as-is).
+      {
+        titleKey: 'Customer organisations',
+        href: '/admin/customer-organisations',
+        permission: 'sla:manage',
+        icon: 'Contact'
       }
     ]
   },

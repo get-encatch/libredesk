@@ -8,4 +8,5 @@ import "github.com/zerodha/fastglue"
 func initEncatch(g *fastglue.Fastglue) {
 	initEncatchMyTickets(g)
 	initEncatchRedact(g)
+	initEncatchOrgs(g)
 }

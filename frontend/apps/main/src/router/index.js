@@ -332,6 +332,13 @@ const routes = [
               }
             ]
           },
+          // encatch: support tier per Encatch org (features/encatch/orgs).
+          {
+            path: 'customer-organisations',
+            name: 'encatch-customer-orgs',
+            component: () => import('@main/features/encatch/orgs/CustomerOrgs.vue'),
+            meta: { titleKey: 'Customer organisations' }
+          },
           {
             path: 'inboxes',
             component: () => import('@main/views/admin/inbox/InboxView.vue'),

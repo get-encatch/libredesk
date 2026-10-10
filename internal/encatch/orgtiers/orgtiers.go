@@ -26,6 +26,7 @@ var (
 	ErrNotFound    = errors.New("organisation not found")
 	ErrUnknownTier = errors.New("unknown support tier")
 	ErrInvalid     = errors.New("invalid organisation")
+	ErrExists      = errors.New("organisation already exists")
 
 	instanceRe = regexp.MustCompile(`^[a-z0-9]{1,16}$`)
 	numericRe  = regexp.MustCompile(`^[0-9]{1,18}$`)
@@ -203,10 +204,17 @@ func (s *Store) Add(instance, orgNumber, orgName, tier string, actorID int, acto
 	if !instanceRe.MatchString(instance) || !numericRe.MatchString(orgNumber) || strings.TrimSpace(orgName) == "" {
 		return "", ErrInvalid
 	}
+	if tier != "" && !contains(s.Tiers, tier) {
+		return "", ErrUnknownTier
+	}
 	orgID := instance + "-" + orgNumber
-	if _, err := s.DB.Exec(`INSERT INTO encatch_orgs (org_id, instance, org_name) VALUES ($1, $2, $3)
-		ON CONFLICT (org_id) DO UPDATE SET org_name = EXCLUDED.org_name`, orgID, instance, strings.TrimSpace(orgName)); err != nil {
+	res, err := s.DB.Exec(`INSERT INTO encatch_orgs (org_id, instance, org_name) VALUES ($1, $2, $3)
+		ON CONFLICT (org_id) DO NOTHING`, orgID, instance, strings.TrimSpace(orgName))
+	if err != nil {
 		return "", fmt.Errorf("adding org: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return orgID, ErrExists
 	}
 	if tier != "" {
 		if err := s.SetTier(orgID, tier, actorID, actorName); err != nil {
