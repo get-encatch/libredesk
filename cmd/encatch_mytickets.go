@@ -171,6 +171,7 @@ func initEncatchMyTickets(g *fastglue.Fastglue) {
 	g.GET("/my-tickets/new", rateLimit(wrap((*mytickets.Service).NewForm), "public"))
 	g.POST("/my-tickets/new", rateLimit(wrap((*mytickets.Service).Create), "public"))
 	g.POST("/my-tickets/org", rateLimit(wrap((*mytickets.Service).SwitchOrg), "public"))
+	g.POST("/my-tickets/theme", rateLimit(wrap((*mytickets.Service).Theme), "public"))
 	g.GET("/my-tickets/{ref}", rateLimit(wrap((*mytickets.Service).View), "public"))
 	g.POST("/my-tickets/{ref}/reply", rateLimit(wrap((*mytickets.Service).Reply), "public"))
 }

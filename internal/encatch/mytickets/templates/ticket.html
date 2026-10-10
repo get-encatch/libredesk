@@ -1,4 +1,4 @@
-{{define "ticket.html"}}{{template "head" (dict "Title" .T.Subject "S" .S "Nav" "list" "Status" .Status "Project" .Project "Wide" true)}}
+{{define "ticket.html"}}{{template "head" (dict "Title" .T.Subject "S" .S "Nav" "list" "Status" .Status "Project" .Project "Wide" true "Theme" .Theme "Back" .Back)}}
 {{template "inbox-list" .}}
 <section class="thread" aria-label="Conversation">
   <header class="thread-head">

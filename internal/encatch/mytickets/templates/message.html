@@ -1,4 +1,4 @@
-{{define "message.html"}}{{template "head" (dict "Title" .Title "S" nil)}}
+{{define "message.html"}}{{template "head" (dict "Title" .Title "S" nil "Theme" .Theme "Back" .Back)}}
 <div class="card mx-auto mt-10 max-w-md">
   <div class="card-header">
     <h1 class="card-title text-xl">{{.Title}}</h1>

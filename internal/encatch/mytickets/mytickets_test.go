@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"mime/multipart"
+	"net/url"
+	"os"
 	"slices"
 	"sort"
 	"strings"
@@ -1107,5 +1109,100 @@ func TestRenames(t *testing.T) {
 	}
 	if !strings.Contains(view, "BigCorp Group") {
 		t.Error("ticket page doesn't show the current org name")
+	}
+}
+
+func TestTheme(t *testing.T) {
+	h := newHarness(t)
+	sid, sess := h.signIn([]map[string]any{{"id": 42, "name": "BigCorp", "access": "manage"}})
+	themeCookieOf := func(resp *fasthttp.Response) (string, bool) {
+		c := fasthttp.AcquireCookie()
+		defer fasthttp.ReleaseCookie(c)
+		c.SetKey(themeCookie)
+		if !resp.Header.Cookie(c) {
+			return "", false
+		}
+		return string(c.Value()) + "|" + string(c.Path()) + "|" + fmt.Sprint(c.MaxAge() > 0, c.Secure(), c.HTTPOnly()), true
+	}
+	post := func(form string) *fasthttp.Response {
+		return h.do(h.svc.Theme, "POST", "/my-tickets/theme", sid, form, nil)
+	}
+
+	resp := post("csrf=" + sess.CSRF + "&theme=dark&back=" + url.QueryEscape("/my-tickets/100?page=2"))
+	if got, ok := themeCookieOf(resp); !ok || got != "dark|/my-tickets|true true false" {
+		t.Fatalf("dark: cookie %q (set %v)", got, ok)
+	}
+	if loc := string(resp.Header.Peek("Location")); resp.StatusCode() != fasthttp.StatusSeeOther || loc != "/my-tickets/100?page=2" {
+		t.Fatalf("dark: %d to %q", resp.StatusCode(), loc)
+	}
+	if got, _ := themeCookieOf(post("csrf=" + sess.CSRF + "&theme=system")); !strings.HasPrefix(got, "|/my-tickets|false") {
+		t.Fatalf("system should delete the cookie, got %q", got)
+	}
+	if _, ok := themeCookieOf(post("csrf=wrong&theme=dark")); ok {
+		t.Fatal("theme saved without a valid csrf token")
+	}
+	for _, back := range []string{"https://evil.example/x", "//evil.example", "/admin", "/my-ticketsevil", "/my-tickets/\\evil"} {
+		resp := post("csrf=" + sess.CSRF + "&theme=light&back=" + url.QueryEscape(back))
+		if loc := string(resp.Header.Peek("Location")); loc != "/my-tickets" {
+			t.Errorf("back %q redirected to %q", back, loc)
+		}
+	}
+
+	// Pages render the saved theme, and the switch shows it as selected.
+	page := func(theme string) string {
+		ctx := &fasthttp.RequestCtx{}
+		ctx.Request.Header.SetMethod("GET")
+		ctx.Request.SetRequestURI("/my-tickets?status=Open")
+		ctx.Request.Header.SetCookie(cookieName, sid)
+		if theme != "" {
+			ctx.Request.Header.SetCookie(themeCookie, theme)
+		}
+		if err := h.svc.List(&fastglue.Request{RequestCtx: ctx}); err != nil {
+			t.Fatal(err)
+		}
+		return string(ctx.Response.Body())
+	}
+	dark := page("dark")
+	if !strings.Contains(dark, `<html lang="en" data-theme="dark">`) || !strings.Contains(dark, `value="dark" title="Dark" aria-label="Dark" aria-pressed="true"`) {
+		t.Fatal("dark page: no data-theme or the switch doesn't show Dark")
+	}
+	if !strings.Contains(dark, `name="back" value="/my-tickets?status=Open"`) || !strings.Contains(dark, "/my-tickets/assets/theme.js?v=") {
+		t.Fatal("page lacks the return path or theme.js")
+	}
+	system := page("")
+	if strings.Contains(system, "data-theme=") || !strings.Contains(system, `value="system" title="Match my device" aria-label="Match my device" aria-pressed="true"`) {
+		t.Fatal("no cookie should follow the device")
+	}
+	if junk := page("purple"); strings.Contains(junk, "data-theme=") {
+		t.Fatal("unknown theme value was rendered")
+	}
+
+	// theme.js is served as JavaScript.
+	js := h.do(h.svc.Asset, "GET", "/my-tickets/assets/theme.js", "", "", map[string]string{"file": "theme.js"})
+	if js.StatusCode() != 200 || !strings.HasPrefix(string(js.Header.ContentType()), "text/javascript") {
+		t.Fatalf("theme.js: %d %s", js.StatusCode(), js.Header.ContentType())
+	}
+}
+
+// The dark tokens appear twice in ui/app.css (chosen Dark, and device dark without a
+// Light choice); they must not drift apart.
+func TestDarkTokensInSync(t *testing.T) {
+	src, err := os.ReadFile("ui/app.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	block := func(selector string) string {
+		s := string(src)
+		i := strings.Index(s, selector)
+		if i < 0 {
+			t.Fatalf("%s not found", selector)
+		}
+		body := s[strings.Index(s[i:], "{")+i+1:]
+		body = body[:strings.Index(body, "}")]
+		return strings.Join(strings.Fields(body), " ")
+	}
+	chosen, device := block(`:root[data-theme="dark"]`), block(`:root:not([data-theme="light"])`)
+	if chosen != device || !strings.Contains(chosen, "--background:") {
+		t.Fatalf("dark token blocks differ:\nchosen: %s\ndevice: %s", chosen, device)
 	}
 }

@@ -1,3 +1,3 @@
-{{define "list.html"}}{{template "head" (dict "Title" "Your tickets" "S" .S "Nav" "list" "Status" .Status "Project" .Project "Wide" true)}}
+{{define "list.html"}}{{template "head" (dict "Title" "Your tickets" "S" .S "Nav" "list" "Status" .Status "Project" .Project "Wide" true "Theme" .Theme "Back" .Back)}}
 {{template "inbox-list" .}}
 {{template "foot"}}{{end}}
