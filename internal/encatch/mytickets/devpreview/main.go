@@ -62,7 +62,13 @@ func main() {
 
 	g := fastglue.NewGlue()
 	g.GET("/", index)
-	g.GET("/preview-login", previewLogin)
+	g.GET("/preview-login", func(r *fastglue.Request) error {
+		// The sign-in links pick a tier: act as an admin who set it for the org.
+		if tier := string(r.RequestCtx.QueryArgs().Peek("tier")); tier != "" {
+			backend.setTier("local-42", tier)
+		}
+		return previewLogin(r)
+	})
 	g.GET("/my-tickets/assets/{file}", svc.Asset)
 	g.GET("/my-tickets/login", svc.Login)
 	g.POST("/my-tickets/logout", svc.Logout)
@@ -137,11 +143,31 @@ type sampleBackend struct {
 	tickets  map[string]*mytickets.TicketSummary
 	msgs     map[string][]mytickets.Message
 	files    map[string]mytickets.Upload // uploaded attachments, served at /preview-uploads/{id}
+	tiers    map[string]string           // org -> support tier (set on the Customer organisations page in the helpdesk)
 	next     int
 }
 
+func (b *sampleBackend) setTier(orgID, tier string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.tiers[orgID] = tier
+}
+
+func (b *sampleBackend) RegisterOrg(instance, orgID, orgName string) (string, error) {
+	return b.OrgTier(orgID)
+}
+
+func (b *sampleBackend) OrgTier(orgID string) (string, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if t, ok := b.tiers[orgID]; ok {
+		return t, nil
+	}
+	return "SaaS Standard", nil
+}
+
 func newSampleBackend() *sampleBackend {
-	b := &sampleBackend{files: map[string]mytickets.Upload{}, contacts: map[string]int{"local-1": 1, "local-2": 2, "local-3": 3}, names: map[int]string{1: "Anita Rao", 2: "Ravi Kumar", 3: "Meera Shah"},
+	b := &sampleBackend{tiers: map[string]string{}, files: map[string]mytickets.Upload{}, contacts: map[string]int{"local-1": 1, "local-2": 2, "local-3": 3}, names: map[int]string{1: "Anita Rao", 2: "Ravi Kumar", 3: "Meera Shah"},
 		tickets: map[string]*mytickets.TicketSummary{}, msgs: map[string][]mytickets.Message{}, next: 140}
 	ago := func(h int) time.Time { return time.Now().Add(-time.Duration(h) * time.Hour) }
 	add := func(ref string, contact int, subject, status, project, projectName string, created, updated time.Time, msgs ...mytickets.Message) {

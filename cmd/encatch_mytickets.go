@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/abhinavxd/libredesk/internal/encatch/mytickets"
+	"github.com/abhinavxd/libredesk/internal/encatch/orgtiers"
 	"github.com/jmoiron/sqlx"
 	"github.com/valyala/fasthttp"
 	"github.com/zerodha/fastglue"
@@ -80,11 +81,15 @@ func initEncatchMyTickets(g *fastglue.Fastglue) {
 				db.SetMaxOpenConns(5)
 				db.SetMaxIdleConns(2)
 			}
+			if err := orgtiers.EnsureSchema(db); err != nil {
+				app.lo.Error("my-tickets: creating org tier tables", "error", err)
+			}
 			s, err := mytickets.New(mytickets.Opts{
 				Verifier: verifier,
 				Store:    mytickets.NewStore(app.redis, sessionTTL),
 				Backend: &mytickets.LibredeskBackend{
 					Users: app.user, Conversations: app.conversation, Media: app.media, DB: db, InboxID: inboxID,
+					OrgTiers: &orgtiers.Store{DB: db, Tiers: verifier.ValidTiers},
 				},
 				EligibleTiers: priorityTiers,
 				SessionTTL:    sessionTTL,

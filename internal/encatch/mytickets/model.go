@@ -50,7 +50,7 @@ type Session struct {
 	Instance         string    `json:"instance"` // ids below are already prefixed with it
 	OrgID            string    `json:"org_id"`
 	OrgName          string    `json:"org_name"`
-	SupportTier      string    `json:"support_tier"`
+	SupportTier      string    `json:"support_tier"` // the org's tier at sign-in, from the helpdesk (not the token)
 	Scope            string    `json:"scope"`
 	Projects         []Project `json:"projects"`
 	CurrentProjectID string    `json:"current_project_id"`
@@ -220,6 +220,11 @@ type Backend interface {
 	Messages(uuid string) ([]Message, error)
 	// CreateTicket creates a contact-initiated ticket and returns its reference number.
 	CreateTicket(contactID int, subject, html string, attrs map[string]any, files []Upload) (string, error)
+	// RegisterOrg records that an org used My Tickets (keeping its name current) and
+	// returns its support tier, which the helpdesk owns (see internal/encatch/orgtiers).
+	RegisterOrg(instance, orgID, orgName string) (string, error)
+	// OrgTier returns an org's current support tier.
+	OrgTier(orgID string) (string, error)
 	// AddReply adds a customer reply to a ticket.
 	AddReply(contactID int, uuid, html string, files []Upload) error
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/abhinavxd/libredesk/internal/attachment"
 	"github.com/abhinavxd/libredesk/internal/conversation"
 	cmodels "github.com/abhinavxd/libredesk/internal/conversation/models"
+	"github.com/abhinavxd/libredesk/internal/encatch/orgtiers"
 	"github.com/abhinavxd/libredesk/internal/image"
 	"github.com/abhinavxd/libredesk/internal/media"
 	mmodels "github.com/abhinavxd/libredesk/internal/media/models"
@@ -35,6 +36,15 @@ type LibredeskBackend struct {
 	Media         *media.Manager
 	DB            *sqlx.DB
 	InboxID       int
+	OrgTiers      *orgtiers.Store // our own package: support tiers per org
+}
+
+func (b *LibredeskBackend) RegisterOrg(instance, orgID, orgName string) (string, error) {
+	return b.OrgTiers.Seen(instance, orgID, orgName)
+}
+
+func (b *LibredeskBackend) OrgTier(orgID string) (string, error) {
+	return b.OrgTiers.Tier(orgID)
 }
 
 func (b *LibredeskBackend) ResolveContact(externalUserID, email, firstName, lastName string) (int, error) {

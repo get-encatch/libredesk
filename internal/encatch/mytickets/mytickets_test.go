@@ -185,10 +185,24 @@ type fakeBackend struct {
 	attrs    map[string]map[string]any
 	msgs     map[string][]Message
 	files    []Upload
+	tiers    map[string]string // org -> tier set by an admin
+	seenOrgs map[string]string // org -> name, from RegisterOrg
+}
+
+func (f *fakeBackend) RegisterOrg(instance, orgID, orgName string) (string, error) {
+	f.seenOrgs[orgID] = orgName
+	return f.OrgTier(orgID)
+}
+func (f *fakeBackend) OrgTier(orgID string) (string, error) {
+	if t, ok := f.tiers[orgID]; ok {
+		return t, nil
+	}
+	return "SaaS Standard", nil
 }
 
 func newFake() *fakeBackend {
-	return &fakeBackend{contacts: map[string]int{}, tickets: map[string]TicketSummary{}, attrs: map[string]map[string]any{}, msgs: map[string][]Message{}}
+	return &fakeBackend{contacts: map[string]int{}, tickets: map[string]TicketSummary{}, attrs: map[string]map[string]any{}, msgs: map[string][]Message{},
+		tiers: map[string]string{"prod-42": "Growth Plus"}, seenOrgs: map[string]string{}}
 }
 
 func (f *fakeBackend) ResolveContact(ext, email, first, last string) (int, error) {
@@ -364,15 +378,31 @@ func TestFlow(t *testing.T) {
 		t.Fatalf("teammate ticket in self scope: status %d", resp.StatusCode())
 	}
 
+	// The helpdesk owns the tier: the token's support_tier is ignored. An admin moved
+	// the org to SaaS Standard after this user signed in; the next ticket uses it, and
 	// SaaS Standard orgs can't request a priority.
 	low := baseClaims()
-	low["support_tier"] = "SaaS Standard"
+	low["support_tier"] = "Enterprise Premium"
 	low["jti"] = "low-1"
 	sid2 := sessionCookie(t, h.do(h.svc.Login, "GET", "/my-tickets/login?token="+sign(t, "current-secret", low), "", "", nil))
+	if h.be.seenOrgs["prod-42"] != "BigCorp" {
+		t.Fatalf("org not registered on sign-in: %v", h.be.seenOrgs)
+	}
+	h.be.tiers["prod-42"] = "SaaS Standard"
 	s2, _ := h.svc.store.Get(context.Background(), sid2)
+	if body := string(h.do(h.svc.NewForm, "GET", "/my-tickets/new", sid2, "", nil).Body()); strings.Contains(body, `name="priority"`) {
+		t.Fatal("SaaS Standard org was offered a priority choice")
+	}
 	h.do(h.svc.Create, "POST", "/my-tickets/new", sid2, "csrf="+s2.CSRF+"&subject=Q&message=Q&priority=Urgent", nil)
-	if _, ok := h.be.attrs["102"][AttrRequestedPriority]; ok {
-		t.Fatalf("SaaS Standard ticket got a requested priority: %v", h.be.attrs["102"])
+	if a := h.be.attrs["102"]; a[AttrTicketTier] != "SaaS Standard" || a[AttrRequestedPriority] != nil {
+		t.Fatalf("ticket after tier change: %v", a)
+	}
+
+	// Orgs nobody has set a tier for get the default.
+	delete(h.be.tiers, "prod-42")
+	h.do(h.svc.Create, "POST", "/my-tickets/new", sid2, "csrf="+s2.CSRF+"&subject=Q2&message=Q", nil)
+	if a := h.be.attrs["103"]; a[AttrTicketTier] != "SaaS Standard" {
+		t.Fatalf("default tier: %v", a)
 	}
 
 	// Logout ends the session.

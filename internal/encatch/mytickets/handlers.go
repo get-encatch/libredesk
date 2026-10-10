@@ -155,8 +155,13 @@ func (s *Service) Login(r *fastglue.Request) error {
 	sess := Session{
 		ContactID: contactID, Email: claims.Email, Name: strings.TrimSpace(first + " " + last),
 		Issuer: claims.Issuer, Instance: claims.Instance, OrgID: string(claims.OrgID), OrgName: strings.TrimSpace(claims.OrgName),
-		SupportTier: claims.SupportTier, Scope: claims.Scope, Projects: claims.Projects,
+		Scope: claims.Scope, Projects: claims.Projects,
 		CurrentProjectID: string(claims.CurrentProjectID),
+	}
+	// The helpdesk owns support tiers (the token's support_tier is ignored).
+	if sess.SupportTier, err = s.backend.RegisterOrg(sess.Instance, sess.OrgID, sess.OrgName); err != nil {
+		s.lo.Error("my-tickets: registering org", "org", sess.OrgID, "error", err)
+		sess.SupportTier = ""
 	}
 	sid, err := s.store.Create(ctx, sess)
 	if err != nil {
@@ -339,14 +344,15 @@ func (s *Service) Create(r *fastglue.Request) error {
 	attrs := map[string]any{
 		AttrOrgID: sess.OrgID, AttrOrgName: sess.OrgName, AttrSourceApp: sess.Issuer, AttrInstance: sess.Instance,
 	}
-	if sess.SupportTier != "" {
-		attrs[AttrTicketTier] = sess.SupportTier
+	tier := s.orgTier(sess) // current tier: an admin may have changed it since sign-in
+	if tier != "" {
+		attrs[AttrTicketTier] = tier
 	}
 	if project != "" {
 		attrs[AttrProjectID] = project
 		attrs[AttrProjectName] = projectName
 	}
-	if PriorityEligible(sess.SupportTier, s.eligibleTiers) && contains(PriorityChoices, priority) {
+	if PriorityEligible(tier, s.eligibleTiers) && contains(PriorityChoices, priority) {
 		attrs[AttrRequestedPriority] = priority
 	}
 	ref, err := s.backend.CreateTicket(sess.ContactID, subject, textToHTML(body), attrs, files)
@@ -471,9 +477,19 @@ func (s *Service) visibleTicket(r *fastglue.Request, sess Session) (TicketSummar
 func (s *Service) renderNewForm(r *fastglue.Request, sess Session, subject, body, project, priority, problem string) error {
 	return s.render(r, fasthttp.StatusOK, "new.html", map[string]any{
 		"S": sess, "Subject": subject, "Message": body, "Project": project, "Priority": priority, "Problem": problem,
-		"CanChoosePriority": PriorityEligible(sess.SupportTier, s.eligibleTiers), "Priorities": PriorityChoices,
+		"CanChoosePriority": PriorityEligible(s.orgTier(sess), s.eligibleTiers), "Priorities": PriorityChoices,
 		"Uploads": s.uploadInfo(),
 	})
+}
+
+// orgTier returns the org's current support tier, falling back to the tier at sign-in.
+func (s *Service) orgTier(sess Session) string {
+	tier, err := s.backend.OrgTier(sess.OrgID)
+	if err != nil {
+		s.lo.Error("my-tickets: reading org tier", "org", sess.OrgID, "error", err)
+		return sess.SupportTier
+	}
+	return tier
 }
 
 // uploadView describes the attachment limits for the forms; nil hides the file field.
