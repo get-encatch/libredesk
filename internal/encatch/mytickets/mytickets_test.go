@@ -285,7 +285,9 @@ func (f *fakeBackend) GetTicket(ref string) (TicketSummary, error) {
 	}
 	return t, nil
 }
-func (f *fakeBackend) Messages(uuid string) ([]Message, error) { return f.msgs[uuid], nil }
+func (f *fakeBackend) Messages(uuid string, page, perPage int) ([]Message, int, error) {
+	return PageMessages(f.msgs[uuid], page, perPage), len(f.msgs[uuid]), nil
+}
 func (f *fakeBackend) CreateTicket(contactID int, subject, html string, attrs map[string]any, tags []string, files []Upload) (string, error) {
 	ref := fmt.Sprint(100 + len(f.tickets))
 	uuid := "u" + ref
@@ -1001,5 +1003,60 @@ func TestPaging(t *testing.T) {
 	small := string(h.do(h.svc.List, "GET", "/my-tickets", sid2, "", nil).Body())
 	if strings.Contains(small, `aria-label="Pages"`) || !strings.Contains(small, "0 tickets") {
 		t.Fatal("small org shows a pager")
+	}
+}
+
+func TestMessagePaging(t *testing.T) {
+	h := newHarness(t)
+	now := time.Now()
+	h.be.tickets["500"] = TicketSummary{UUID: "u500", ReferenceNumber: "500", ContactID: 50, OrgID: "prod-42", Subject: "Long thread", InternalStatus: "Open", CreatedAt: now}
+	h.be.tickets["501"] = TicketSummary{UUID: "u501", ReferenceNumber: "501", ContactID: 50, OrgID: "prod-42", Subject: "Short thread", InternalStatus: "Open", CreatedAt: now}
+	for i := 1; i <= 25; i++ { // oldest first: message 1 .. 25
+		h.be.msgs["u500"] = append(h.be.msgs["u500"], Message{FromCustomer: true, HTML: fmt.Sprintf("<p>Message number %d.</p>", i)})
+	}
+	h.be.msgs["u501"] = []Message{{FromCustomer: true, HTML: "<p>Message number 1.</p>"}, {HTML: "<p>Message number 2.</p>"}}
+	sid, _ := h.signIn([]map[string]any{{"id": 42, "name": "BigCorp", "access": "manage"}})
+	view := func(ref, query string) string {
+		resp := h.do(h.svc.View, "GET", "/my-tickets/"+ref+query, sid, "", map[string]string{"ref": ref})
+		if resp.StatusCode() != fasthttp.StatusOK {
+			t.Fatalf("ticket %s%s: %d", ref, query, resp.StatusCode())
+		}
+		return string(resp.Body())
+	}
+	shows := func(body string, from, to int) bool {
+		for i := 1; i <= 25; i++ {
+			if strings.Contains(body, fmt.Sprintf("Message number %d.<", i)) != (i >= from && i <= to) {
+				return false
+			}
+		}
+		return true
+	}
+
+	newest := view("500", "")
+	if !shows(newest, 16, 25) || !strings.Contains(newest, "Messages 16–25 of 25") ||
+		!strings.Contains(newest, `href="/my-tickets/500?m=2">Show earlier messages`) || strings.Contains(newest, "Show newer messages") {
+		t.Fatal("newest page: wrong messages or links")
+	}
+	middle := view("500", "?m=2")
+	if !shows(middle, 6, 15) || !strings.Contains(middle, `href="/my-tickets/500?m=3"`) || !strings.Contains(middle, `href="/my-tickets/500">Show newer messages`) {
+		t.Fatal("middle page: wrong messages or links")
+	}
+	oldest := view("500", "?m=3")
+	if !shows(oldest, 1, 5) || !strings.Contains(oldest, "Messages 1–5 of 25") || !strings.Contains(oldest, "Start of the conversation") || strings.Contains(oldest, "Show earlier messages") {
+		t.Fatal("oldest page: wrong messages or links")
+	}
+	if past := view("500", "?m=40"); !shows(past, 1, 5) {
+		t.Fatal("a page past the start doesn't show the oldest messages")
+	}
+	// The list's filters and page stay in the thread links.
+	if kept := view("500", "?page=2&status=Open"); !strings.Contains(kept, `href="/my-tickets/500?page=2&amp;status=Open&amp;m=2"`) {
+		t.Fatal("thread links dropped the list filters")
+	}
+	// Short threads: no paging bar.
+	if short := view("501", ""); strings.Contains(short, "Show earlier messages") || strings.Contains(short, "Messages 1–") || !strings.Contains(short, "Message number 2.") {
+		t.Fatal("short thread shows paging")
+	}
+	if got := PageMessages(h.be.msgs["u500"], 3, 10); len(got) != 5 || got[0].HTML != "<p>Message number 1.</p>" {
+		t.Fatalf("PageMessages oldest page = %d messages", len(got))
 	}
 }

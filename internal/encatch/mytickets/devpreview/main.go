@@ -334,10 +334,11 @@ func (b *sampleBackend) GetTicket(ref string) (mytickets.TicketSummary, error) {
 	return *t, nil
 }
 
-func (b *sampleBackend) Messages(uuid string) ([]mytickets.Message, error) {
+func (b *sampleBackend) Messages(uuid string, page, perPage int) ([]mytickets.Message, int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return append([]mytickets.Message(nil), b.msgs[uuid]...), nil
+	all := b.msgs[uuid]
+	return append([]mytickets.Message(nil), mytickets.PageMessages(all, page, perPage)...), len(all), nil
 }
 
 func (b *sampleBackend) CreateTicket(contactID int, subject, html string, attrs map[string]any, tags []string, files []mytickets.Upload) (string, error) {

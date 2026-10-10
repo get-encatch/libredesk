@@ -18,6 +18,12 @@
     {{if .Sent}}<div class="alert mb-6">Your reply was sent. We'll get back to you here and by email.</div>{{end}}
     {{if eq .TicketStatus "Waiting on you"}}<div class="alert mb-6 border-warning-foreground bg-warning">We're waiting for your reply. Add any details below.</div>{{end}}
 
+    {{with .Thread}}{{if .Paged}}
+    <div class="mb-6 flex flex-wrap items-center justify-between gap-2 border-b pb-3">
+      {{if .HasEarlier}}<a class="btn btn-outline btn-sm" href="{{.EarlierURL}}">Show earlier messages</a>{{else}}<span class="text-xs text-muted-foreground">Start of the conversation</span>{{end}}
+      <span class="text-xs text-muted-foreground">Messages {{.From}}–{{.To}} of {{.Total}}</span>
+    </div>
+    {{end}}{{end}}
     <div class="space-y-8">
       {{range .Messages}}
       <article class="flex gap-3">
@@ -36,6 +42,11 @@
       <p class="text-sm text-muted-foreground">No messages yet.</p>
       {{end}}
     </div>
+    {{if .Thread.HasNewer}}
+    <div class="mt-8 flex justify-center border-t pt-4">
+      <a class="btn btn-outline btn-sm" href="{{.Thread.NewerURL}}">Show newer messages</a>
+    </div>
+    {{end}}
   </div>
 
   {{if .CanReply}}

@@ -270,12 +270,16 @@ func (b *LibredeskBackend) GetTicket(referenceNumber string) (TicketSummary, err
 	}, nil
 }
 
-func (b *LibredeskBackend) Messages(uuid string) ([]Message, error) {
+func (b *LibredeskBackend) Messages(uuid string, page, perPage int) ([]Message, int, error) {
 	private := false
-	msgs, _, err := b.Conversations.GetConversationMessages(uuid, 1, 200,
+	msgs, _, err := b.Conversations.GetConversationMessages(uuid, page, perPage,
 		&private, []string{cmodels.MessageIncoming, cmodels.MessageOutgoing})
 	if err != nil {
-		return nil, fmt.Errorf("loading messages: %w", err)
+		return nil, 0, fmt.Errorf("loading messages: %w", err)
+	}
+	total := 0
+	if len(msgs) > 0 {
+		total = msgs[0].Total // COUNT(*) OVER () in libredesk's query: every matching message
 	}
 	out := make([]Message, 0, len(msgs))
 	for _, m := range msgs {
@@ -316,7 +320,7 @@ func (b *LibredeskBackend) Messages(uuid string) ([]Message, error) {
 	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
 		out[i], out[j] = out[j], out[i]
 	}
-	return out, nil
+	return out, total, nil
 }
 
 func (b *LibredeskBackend) CreateTicket(contactID int, subject, html string, attrs map[string]any, tags []string, files []Upload) (string, error) {

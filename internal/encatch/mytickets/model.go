@@ -156,6 +156,16 @@ func DisplaySubject(subject, ref, format string) string {
 	return trimmed
 }
 
+// PageMessages returns page page (1 = newest) of an oldest-first thread, oldest first:
+// the in-memory equivalent of Backend.Messages, for tests and the preview.
+func PageMessages(all []Message, page, perPage int) []Message {
+	end := len(all) - (page-1)*perPage
+	if end <= 0 || perPage <= 0 {
+		return nil
+	}
+	return all[max(0, end-perPage):end]
+}
+
 // TicketSummary is one row of the ticket list.
 type TicketSummary struct {
 	UUID            string
@@ -292,8 +302,9 @@ type Backend interface {
 	ListTickets(q ListQuery) ([]TicketSummary, error)
 	// GetTicket loads one ticket by reference number.
 	GetTicket(referenceNumber string) (TicketSummary, error)
-	// Messages returns the customer-visible messages of a ticket, oldest first.
-	Messages(uuid string) ([]Message, error)
+	// Messages returns one page of a ticket's customer-visible messages (page 1 is the
+	// newest perPage), oldest first within the page, and how many there are in all.
+	Messages(uuid string, page, perPage int) ([]Message, int, error)
 	// CreateTicket creates a contact-initiated ticket and returns its reference number.
 	CreateTicket(contactID int, subject, html string, attrs map[string]any, tags []string, files []Upload) (string, error)
 	// RegisterOrg records that an org used My Tickets (keeping its name current) and

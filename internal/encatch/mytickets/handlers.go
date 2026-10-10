@@ -57,6 +57,9 @@ const (
 	maxSubjectLen  = 200
 	maxMessageLen  = 20000
 	defaultPerPage = 50
+	// Messages per page of a ticket's thread. Long email replies quote whole threads,
+	// so a page is kept small; "Show earlier messages" loads the next ten.
+	messagesPerPage = 10
 	maxPage        = 200 // 10,000 tickets deep; past that, search
 	maxSearchLen   = 100
 	maxFiles       = 5 // attachments per ticket or reply
@@ -294,7 +297,13 @@ func (s *Service) View(r *fastglue.Request) error {
 // renderTicket shows a ticket's thread, with an optional problem and the
 // reply draft to keep after a rejected reply.
 func (s *Service) renderTicket(r *fastglue.Request, sess Session, t TicketSummary, problem, draft string) error {
-	msgs, err := s.backend.Messages(t.UUID)
+	// m picks the page of the thread: 1 (the default) is the newest messages.
+	mpage := max(r.RequestCtx.QueryArgs().GetUintOrZero("m"), 1)
+	msgs, total, err := s.backend.Messages(t.UUID, mpage, messagesPerPage)
+	if err == nil && len(msgs) == 0 && total > 0 && mpage > 1 { // past the oldest page: show the oldest
+		mpage = (total + messagesPerPage - 1) / messagesPerPage
+		msgs, total, err = s.backend.Messages(t.UUID, mpage, messagesPerPage)
+	}
 	if err != nil {
 		s.lo.Error("my-tickets: loading messages", "error", err)
 		return s.renderError(r, fasthttp.StatusInternalServerError, "We couldn't load this ticket. Please try again.")
@@ -315,6 +324,25 @@ func (s *Service) renderTicket(r *fastglue.Request, sess Session, t TicketSummar
 	data["T"] = t
 	data["TicketStatus"] = CustomerStatus(t.InternalStatus)
 	data["Messages"] = view
+	// Thread paging links keep the list's filters and page.
+	threadURL := func(page int) template.URL {
+		u := basePath + "/" + url.PathEscape(t.ReferenceNumber) + string(data["Filters"].(template.URL))
+		if page > 1 {
+			sep := "?"
+			if strings.Contains(u, "?") {
+				sep = "&"
+			}
+			u += sep + "m=" + strconv.Itoa(page)
+		}
+		return template.URL(u) // #nosec G203: path-escaped ref and url.Values-encoded filters
+	}
+	newest := total - (mpage-1)*messagesPerPage // messages counted oldest = 1
+	data["Thread"] = map[string]any{
+		"Paged": total > messagesPerPage, "Total": total,
+		"From": max(1, newest-messagesPerPage+1), "To": newest,
+		"HasEarlier": mpage*messagesPerPage < total, "EarlierURL": threadURL(mpage + 1),
+		"HasNewer": mpage > 1, "NewerURL": threadURL(mpage - 1),
+	}
 	data["Sent"] = problem == "" && string(r.RequestCtx.QueryArgs().Peek("sent")) == "1"
 	data["Problem"] = problem
 	data["Draft"] = draft
