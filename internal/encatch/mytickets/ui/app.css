@@ -80,6 +80,10 @@
   /* Alert */
   .alert { @apply relative w-full rounded-lg border px-4 py-3 text-sm bg-background text-foreground; }
   .alert-destructive { @apply border-destructive text-destructive; }
+  .alert-warning { @apply flex gap-3 border-warning-foreground bg-warning; }
+  .alert-warning > .icon { @apply mt-0.5 text-warning-foreground; }
+  .secrets-hint { @apply mt-2 flex items-start gap-1.5 text-xs text-muted-foreground; }
+  .secrets-hint > .icon { @apply mt-px h-3.5 w-3.5 text-warning-foreground; }
   /* Customer-visible message HTML */
   .message-body { @apply text-sm leading-relaxed break-words; }
   .message-body p { @apply my-2; }

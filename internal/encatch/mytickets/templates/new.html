@@ -31,6 +31,7 @@
       <textarea id="message" name="message" class="textarea min-h-[180px]" required maxlength="20000">{{.Message}}</textarea>
       <p class="text-xs text-muted-foreground">For bugs, include the steps to reproduce, what you expected, and the SDK and version.</p>
     </div>
+    {{template "secrets-warning" "full"}}
     {{with .Uploads}}
     <div class="space-y-2">
       <label for="files" class="label">Attachments <span class="font-normal text-muted-foreground">(optional)</span></label>

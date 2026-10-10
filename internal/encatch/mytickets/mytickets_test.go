@@ -563,3 +563,15 @@ func TestIntersectExtensions(t *testing.T) {
 		}
 	}
 }
+
+func TestSecretsWarning(t *testing.T) {
+	h := newHarness(t)
+	sid := sessionCookie(t, h.do(h.svc.Login, "GET", "/my-tickets/login?token="+sign(t, "current-secret", baseClaims()), "", "", nil))
+	if body := string(h.do(h.svc.NewForm, "GET", "/my-tickets/new", sid, "", nil).Body()); !strings.Contains(body, "share passwords or secrets") {
+		t.Fatal("new-ticket form lacks the secrets warning")
+	}
+	h.be.tickets["500"] = TicketSummary{UUID: "u500", ReferenceNumber: "500", ContactID: 1, OrgID: "42", InternalStatus: "Open"}
+	if body := string(h.do(h.svc.View, "GET", "/my-tickets/500", sid, "", map[string]string{"ref": "500"}).Body()); !strings.Contains(body, "include passwords, API keys or tokens") {
+		t.Fatal("reply box lacks the secrets reminder")
+	}
+}
