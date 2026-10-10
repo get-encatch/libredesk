@@ -120,6 +120,7 @@ services:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./customer-site:/srv/customer-site:ro
+      - ./deploy-state/public:/srv/deploy-status:ro
       - ./data/caddy/data:/data
       - ./data/caddy/config:/config
 

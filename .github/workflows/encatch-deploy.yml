@@ -1,0 +1,94 @@
+# encatch: approval-gated production deploy (our own workflow; upstream has none).
+#
+# After release.yml has built the image for a v*-encatch.N tag, this job waits for
+# approval on the "production" environment (required reviewer). Once approved it
+# records a GitHub deployment (task deploy:encatch). The server's deploy agent
+# (deploy/agent/deploy_agent.py, systemd timer) pulls that deployment itself; nothing
+# here can reach the server. The agent reports progress at STATUS_URL, which this job
+# watches to mark the deployment success or failure.
+#
+# Run it by hand (Actions > Deploy > Run workflow) to deploy or roll back to any
+# existing release tag; approval is still required.
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release tag to deploy or roll back to, e.g. v2.8.0-encatch.5
+        required: true
+
+permissions:
+  contents: read
+  deployments: write
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://desk.encatch.com
+    timeout-minutes: 40
+    env:
+      VERSION: ${{ github.event.inputs.version || github.event.workflow_run.head_branch }}
+      REPO: ${{ github.repository }}
+      STATUS_URL: https://desk.encatch.com/.well-known/encatch-deploy.json
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check the release
+        run: |
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-encatch\.[0-9]+$ ]]; then
+            echo "::error::'$VERSION' is not a release tag (vX.Y.Z-encatch.N)"; exit 1
+          fi
+          gh api "repos/$REPO/git/ref/tags/$VERSION" --jq .ref
+          docker manifest inspect "ghcr.io/get-encatch/libredesk:$VERSION" > /dev/null
+          echo "Image ghcr.io/get-encatch/libredesk:$VERSION exists"
+
+      - name: Record the deployment for the server
+        id: dep
+        run: |
+          id=$(jq -n --arg v "$VERSION" '{ref: $v, environment: "production", task: "deploy:encatch",
+                auto_merge: false, required_contexts: [], production_environment: true,
+                payload: {version: $v}, description: ("Deploy " + $v)}' |
+               gh api -X POST "repos/$REPO/deployments" --input - --jq .id)
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          gh api -X POST "repos/$REPO/deployments/$id/statuses" -f state=queued \
+            -f description="Waiting for the server to pick it up (checks every 2 minutes)" > /dev/null
+          echo "Deployment $id recorded for $VERSION"
+
+      - name: Wait for the server
+        env:
+          ID: ${{ steps.dep.outputs.id }}
+        run: |
+          status() {  # state, description
+            gh api -X POST "repos/$REPO/deployments/$ID/statuses" -f state="$1" -f description="${2:0:140}" \
+              -f environment_url=https://desk.encatch.com > /dev/null
+          }
+          last=""
+          deadline=$((SECONDS + 1800))
+          while (( SECONDS < deadline )); do
+            s=$(curl -fsS --max-time 10 "$STATUS_URL?ts=$SECONDS" || true)
+            if [ "$(jq -r '.deployment_id // empty' <<< "$s" 2>/dev/null)" = "$ID" ]; then
+              state=$(jq -r .state <<< "$s"); msg=$(jq -r .message <<< "$s")
+              case "$state" in
+                success) status success "$msg"; echo "Deployed: $msg"; exit 0 ;;
+                failure) status failure "$msg"; echo "::error::Deploy failed: $msg"; exit 1 ;;
+                in_progress)
+                  if [ "$msg" != "$last" ]; then status in_progress "$msg"; echo "$msg"; last="$msg"; fi ;;
+              esac
+            fi
+            sleep 15
+          done
+          status error "The server didn't report back within 30 minutes"
+          echo "::error::No report from the server; check 'journalctl -u encatch-deploy' there"
+          exit 1

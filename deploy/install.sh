@@ -15,6 +15,7 @@ PG_UID=70
 echo "== directories"
 mkdir -p data/postgres data/uploads data/redis data/caddy/data data/caddy/config \
   backups/pgbackrest backups/dumps backups/restic secrets
+mkdir -p deploy-state/public  # deploy agent state; status.json is served by Caddy
 chmod 700 secrets
 sudo chown -R "$PG_UID:$PG_UID" backups/pgbackrest backups/dumps
 chmod +x scripts/*.sh
@@ -72,6 +73,11 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now \
   libredesk-backup-db-full.timer libredesk-backup-db-diff.timer libredesk-backup-db-incr.timer \
   libredesk-dump-db.timer libredesk-backup-uploads.timer libredesk-restore-test.timer
+
+echo "== deploy agent (pulls releases approved in GitHub; see README)"
+sudo cp systemd/encatch-deploy.service systemd/encatch-deploy.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now encatch-deploy.timer
 
 echo "== done"
 docker compose ps

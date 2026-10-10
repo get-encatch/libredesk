@@ -46,12 +46,35 @@ the pgBackRest stanza, takes a first full backup if none exists and installs the
 systemd timers. Leave out `--with-caddy` until DNS points at the server and ports
 80/443 are open.
 
-- **App upgrade:** set `LIBREDESK_VERSION` in `/srv/libredesk/.env` to the new tag and
-  run `docker compose up -d app`. Database migrations run on start, so take a backup
-  first (`scripts/backup-db.sh incr`).
+- **App upgrade:** use the approval flow below. Manual fallback: set `LIBREDESK_VERSION`
+  in `/srv/libredesk/.env` to the new tag and run `docker compose up -d app`. Database
+  migrations run on start, so take a backup first (`scripts/backup-db.sh incr`).
 - **Postgres minor update (18.x):** `docker compose build --pull db && docker compose up -d db`.
 - **Postgres major upgrade (18 → 19):** a planned migration (pg_upgrade or dump/restore).
   Don't just change the tag.
+
+## Deploys (approval in GitHub, no SSH)
+
+1. Push a release tag from `encatch/main`: `git tag -a v2.8.0-encatch.N -m "..." && git push origin v2.8.0-encatch.N`.
+   `release.yml` builds and pushes the image (~3 min) and creates a draft GitHub Release.
+2. The **Deploy** workflow (`.github/workflows/encatch-deploy.yml`) then waits for approval on the
+   `production` environment. GitHub emails the approver; approve in the run page (web or mobile).
+3. On approval it records a GitHub deployment. Within ~2 minutes the server's deploy agent
+   (`agent/deploy_agent.py`, `encatch-deploy.timer`) picks it up and: takes an incremental backup,
+   installs the tag's `deploy/` files (never `.env`, `data/`, `backups/`, `secrets/`, `deploy-state/`),
+   sets `LIBREDESK_VERSION`, pulls and restarts the app (Caddy too if its config changed; never
+   Postgres or Redis), and checks `/health` on both domains. If unhealthy it restores the previous
+   files and version.
+4. The workflow shows the result; the repo's **Environments > production** page keeps the history.
+
+- **Roll back / redeploy:** Actions > Deploy > Run workflow with an existing tag (approval required).
+- **Logs on the server:** `journalctl -u encatch-deploy -n 100`. Status: `deploy-state/public/status.json`
+  (also at `https://<desk>/.well-known/encatch-deploy.json`).
+- **Security:** the server holds no GitHub credentials and accepts no inbound deploy connections. It
+  reads deployments from GitHub's public API and only accepts ones created by the workflow
+  (`github-actions[bot]`, task `deploy:encatch`) for a `vX.Y.Z-encatch.N` tag, approved within 6 hours.
+- **Release the GitHub Release** (draft) by hand when you want it public; it doesn't affect deploys.
+- Changes to Postgres or Redis in `docker-compose.yml` are installed but not applied; apply them by hand.
 
 ## Backups
 

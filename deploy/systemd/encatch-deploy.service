@@ -1,0 +1,11 @@
+[Unit]
+Description=Encatch deploy agent: deploy releases approved in GitHub
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/libredesk
+ExecStart=/usr/bin/python3 /srv/libredesk/agent/deploy_agent.py
+# A deploy (backup, image pull, health check, possible rollback) takes a few minutes.
+TimeoutStartSec=30min

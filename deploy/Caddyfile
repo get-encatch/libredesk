@@ -1,11 +1,23 @@
 # Agents: the full libredesk app (login, inboxes, admin). Libredesk's Root URL points here.
 {$DESK_DOMAIN} {
 	encode zstd gzip
-	# Uploads can be up to 100MB (app.server.max_body_size in config.toml).
+	# Keep in step with app.server.max_body_size in config.toml (110MB).
 	request_body {
-		max_size 100MB
+		max_size 110MB
 	}
-	reverse_proxy app:9000
+
+	# Deploy agent status (deploy/agent/deploy_agent.py), watched by the approved
+	# GitHub deploy job. Only deployment id, version and state; no secrets.
+	handle /.well-known/encatch-deploy.json {
+		rewrite * /status.json
+		root * /srv/deploy-status
+		header Cache-Control "no-store"
+		file_server
+	}
+
+	handle {
+		reverse_proxy app:9000
+	}
 }
 
 # Customers: only customer-facing paths reach libredesk. Anything else (typos, /, /login,
@@ -14,7 +26,7 @@
 {$DOMAIN} {
 	encode zstd gzip
 	request_body {
-		max_size 100MB
+		max_size 110MB
 	}
 
 	@customer path /my-tickets /my-tickets/* \
