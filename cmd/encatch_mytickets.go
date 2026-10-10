@@ -83,6 +83,12 @@ func initEncatchMyTickets(g *fastglue.Fastglue) {
 			if err := orgtiers.EnsureSchema(db); err != nil {
 				app.lo.Error("my-tickets: creating org tier tables", "error", err)
 			}
+			// The ticket list index; built without locking, in the background.
+			go func() {
+				if err := mytickets.EnsureIndexes(db); err != nil {
+					app.lo.Error("my-tickets: creating ticket list index", "error", err)
+				}
+			}()
 			s, err := mytickets.New(mytickets.Opts{
 				Verifier: verifier,
 				Store:    mytickets.NewStore(app.redis, sessionTTL),

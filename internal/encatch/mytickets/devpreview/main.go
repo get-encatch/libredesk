@@ -275,6 +275,10 @@ func (b *sampleBackend) ListTickets(q mytickets.ListQuery) ([]mytickets.TicketSu
 		out = append(out, row)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].UpdatedAt.After(out[j].UpdatedAt) })
+	out = out[min(q.Offset, len(out)):]
+	if q.Limit > 0 && len(out) > q.Limit {
+		out = out[:q.Limit]
+	}
 	return out, nil
 }
 

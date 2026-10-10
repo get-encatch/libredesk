@@ -46,6 +46,34 @@ type LibredeskBackend struct {
 	SubjectRefFormat string
 }
 
+// orgActivityIndex serves the ticket list: one org's tickets, latest customer-visible
+// activity first. It is ours (encatch_ prefix) on libredesk's conversations table.
+const orgActivityIndex = "encatch_conversations_org_activity"
+
+// EnsureIndexes creates the indexes My Tickets needs on libredesk's tables. CONCURRENTLY,
+// so the tickets table is never locked; an index left invalid by an interrupted build is
+// dropped and built again. Slow on a large table, so callers run it in the background.
+func EnsureIndexes(db *sqlx.DB) error {
+	var valid bool
+	err := db.Get(&valid, `SELECT i.indisvalid FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid
+		WHERE c.relname = $1 AND pg_table_is_visible(c.oid)`, orgActivityIndex)
+	switch {
+	case err == nil && valid:
+		return nil
+	case err == nil:
+		if _, err := db.Exec(`DROP INDEX CONCURRENTLY IF EXISTS ` + orgActivityIndex); err != nil {
+			return fmt.Errorf("dropping invalid index: %w", err)
+		}
+	case !errors.Is(err, sql.ErrNoRows):
+		return fmt.Errorf("checking index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX CONCURRENTLY IF NOT EXISTS ` + orgActivityIndex + ` ON conversations
+		((custom_attributes->>'org_id'), last_interaction_at DESC NULLS LAST, id DESC)`); err != nil {
+		return fmt.Errorf("creating index: %w", err)
+	}
+	return nil
+}
+
 func (b *LibredeskBackend) RegisterOrg(instance, orgID, orgName string) (string, error) {
 	return b.OrgTiers.Seen(instance, orgID, orgName)
 }
@@ -90,11 +118,22 @@ SELECT c.uuid, c.reference_number, COALESCE(c.subject, '') AS subject, s.name AS
        c.created_at, COALESCE(lm.created_at, c.created_at) AS updated_at,
        COALESCE(lm.from_customer, false) AS last_from_customer, COALESCE(lm.sender_id, 0) AS last_author_id,
        COALESCE(lm.sender_name, '') AS last_author, COALESCE(lm.preview, '') AS preview
-FROM conversations c
+-- The page first, in the order of index encatch_conversations_org_activity (see
+-- EnsureIndexes): last_interaction_at is the latest message the customer can see
+-- (libredesk skips private notes and activity), so each page reads only its own rows.
+FROM (
+    SELECT c.id, c.uuid, c.reference_number, c.subject, c.status_id, c.contact_id,
+           c.custom_attributes, c.created_at, c.last_interaction_at
+    FROM conversations c
+    JOIN conversation_statuses s ON s.id = c.status_id
+    WHERE %s
+    ORDER BY c.last_interaction_at DESC NULLS LAST, c.id DESC
+    LIMIT %d OFFSET %d
+) c
 JOIN conversation_statuses s ON s.id = c.status_id
 JOIN users u ON u.id = c.contact_id
--- The latest customer-visible message, with the same filter as the ticket page.
--- (conversations.last_message and last_message_at also count private notes.)
+-- The latest customer-visible message of each row on the page, with the same filter as
+-- the ticket page. (conversations.last_message and last_message_at also count private notes.)
 LEFT JOIN LATERAL (
     SELECT m.created_at, m.type = 'incoming' AS from_customer, m.sender_id,
            TRIM(COALESCE(mu.first_name, '') || ' ' || COALESCE(mu.last_name, '')) AS sender_name,
@@ -106,9 +145,7 @@ LEFT JOIN LATERAL (
     ORDER BY m.created_at DESC
     LIMIT 1
 ) lm ON true
-WHERE %s
-ORDER BY updated_at DESC
-LIMIT %d`
+ORDER BY c.last_interaction_at DESC NULLS LAST, c.id DESC`
 
 type listRow struct {
 	UUID             string    `db:"uuid"`
@@ -189,11 +226,12 @@ func scopeWhere(q ListQuery) (string, []any) {
 func (b *LibredeskBackend) ListTickets(q ListQuery) ([]TicketSummary, error) {
 	limit := q.Limit
 	if limit <= 0 || limit > 500 {
-		limit = 200
+		limit = 50
 	}
+	offset := max(q.Offset, 0)
 	where, args := scopeWhere(q)
 	var rows []listRow
-	if err := b.DB.Select(&rows, fmt.Sprintf(listSQL, where, limit), args...); err != nil {
+	if err := b.DB.Select(&rows, fmt.Sprintf(listSQL, where, limit, offset), args...); err != nil {
 		return nil, fmt.Errorf("listing tickets: %w", err)
 	}
 	out := make([]TicketSummary, 0, len(rows))

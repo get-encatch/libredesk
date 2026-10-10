@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"mime/multipart"
 	"slices"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -263,6 +264,17 @@ func (f *fakeBackend) ListTickets(q ListQuery) ([]TicketSummary, error) {
 		if Visible(s, t) {
 			out = append(out, t)
 		}
+	}
+	// Newest first, like the adapter; then the requested page.
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].CreatedAt.Equal(out[j].CreatedAt) {
+			return out[i].CreatedAt.After(out[j].CreatedAt)
+		}
+		return out[i].ReferenceNumber > out[j].ReferenceNumber
+	})
+	out = out[min(q.Offset, len(out)):]
+	if q.Limit > 0 && len(out) > q.Limit {
+		out = out[:q.Limit]
 	}
 	return out, nil
 }
@@ -922,5 +934,72 @@ func TestDisplaySubject(t *testing.T) {
 		if got := DisplaySubject(c.subject, c.ref, c.format); got != c.want {
 			t.Errorf("DisplaySubject(%q, %q, %q) = %q, want %q", c.subject, c.ref, c.format, got, c.want)
 		}
+	}
+}
+
+func TestPaging(t *testing.T) {
+	h := newHarness(t)
+	now := time.Now()
+	// 120 tickets in BigCorp: ticket 1000 is the newest, 1119 the oldest.
+	for i := 0; i < 120; i++ {
+		ref := fmt.Sprint(1000 + i)
+		h.be.tickets[ref] = TicketSummary{UUID: "u" + ref, ReferenceNumber: ref, ContactID: 50, OrgID: "prod-42",
+			Subject: "Paged ticket " + ref, InternalStatus: "Open", CreatedAt: now.Add(-time.Duration(i) * time.Minute)}
+	}
+	sid, _ := h.signIn([]map[string]any{{"id": 42, "name": "BigCorp", "access": "manage"}})
+	list := func(query string) string {
+		resp := h.do(h.svc.List, "GET", "/my-tickets"+query, sid, "", nil)
+		if resp.StatusCode() != fasthttp.StatusOK {
+			t.Fatalf("list %q: %d", query, resp.StatusCode())
+		}
+		return string(resp.Body())
+	}
+	has := func(body string, refs ...int) bool {
+		for _, r := range refs {
+			if !strings.Contains(body, fmt.Sprintf("Paged ticket %d<", r)) {
+				return false
+			}
+		}
+		return true
+	}
+
+	first := list("")
+	if !has(first, 1000, 1049) || has(first, 1050) || !strings.Contains(first, `href="/my-tickets?page=2" rel="next"`) || strings.Contains(first, `rel="prev"`) {
+		t.Fatal("page 1: wrong tickets or links")
+	}
+	if !strings.Contains(first, "Page 1") {
+		t.Fatal("page 1: no page label")
+	}
+	second := list("?page=2")
+	if !has(second, 1050, 1099) || has(second, 1049, 1100) || !strings.Contains(second, `href="/my-tickets" rel="prev"`) {
+		t.Fatal("page 2: wrong tickets or Newer link")
+	}
+	// Opening a ticket from page 2 keeps the page, in its link and in the close button.
+	if !strings.Contains(second, `href="/my-tickets/1050?page=2"`) {
+		t.Fatal("ticket links don't carry the page")
+	}
+	view := h.do(h.svc.View, "GET", "/my-tickets/1050?page=2", sid, "", map[string]string{"ref": "1050"})
+	if body := string(view.Body()); !strings.Contains(body, `href="/my-tickets?page=2" class="btn btn-ghost btn-icon -mr-2`) || !has(body, 1099) {
+		t.Fatal("ticket view lost the page")
+	}
+	last := list("?page=3")
+	if !has(last, 1100, 1119) || strings.Contains(last, `rel="next"`) {
+		t.Fatal("page 3: wrong tickets, or an Older link at the end")
+	}
+	if beyond := list("?page=9"); !strings.Contains(beyond, "No older tickets") {
+		t.Fatal("past the end: no 'No older tickets'")
+	}
+	// Junk falls back to page 1; filters stay in the paging links.
+	if junk := list("?page=abc"); !has(junk, 1000) {
+		t.Fatal("page=abc didn't show page 1")
+	}
+	if filtered := list("?status=Open"); !strings.Contains(filtered, `href="/my-tickets?page=2&amp;status=Open" rel="next"`) {
+		t.Fatal("Older link dropped the status filter")
+	}
+	// Few tickets: a plain count and no pager.
+	sid2, _ := h.signIn([]map[string]any{{"id": 7, "name": "Acme", "access": "manage"}})
+	small := string(h.do(h.svc.List, "GET", "/my-tickets", sid2, "", nil).Body())
+	if strings.Contains(small, `aria-label="Pages"`) || !strings.Contains(small, "0 tickets") {
+		t.Fatal("small org shows a pager")
 	}
 }

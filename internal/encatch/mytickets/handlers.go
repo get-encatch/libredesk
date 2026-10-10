@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -55,7 +56,8 @@ const (
 	basePath       = "/my-tickets"
 	maxSubjectLen  = 200
 	maxMessageLen  = 20000
-	defaultPerPage = 200
+	defaultPerPage = 50
+	maxPage        = 200 // 10,000 tickets deep; past that, search
 	maxSearchLen   = 100
 	maxFiles       = 5 // attachments per ticket or reply
 )
@@ -219,31 +221,45 @@ func (s *Service) loadList(r *fastglue.Request, sess Session) (map[string]any, e
 	if r := []rune(search); len(r) > maxSearchLen {
 		search = string(r[:maxSearchLen])
 	}
+	page := min(max(args.GetUintOrZero("page"), 1), maxPage)
+	// One extra row says whether there is an older page, without counting the org's tickets.
 	tickets, err := s.backend.ListTickets(ListQuery{
 		Scope: sess.Scope, ContactID: sess.ContactID, OrgID: sess.OrgID, ProjectIDs: sess.ProjectIDs(),
-		Status: status, ProjectID: project, Search: search, Limit: defaultPerPage,
+		Status: status, ProjectID: project, Search: search,
+		Limit: defaultPerPage + 1, Offset: (page - 1) * defaultPerPage,
 	})
 	if err != nil {
 		return nil, err
+	}
+	hasOlder := len(tickets) > defaultPerPage && page < maxPage
+	if len(tickets) > defaultPerPage {
+		tickets = tickets[:defaultPerPage]
 	}
 	rows := make([]inboxRow, 0, len(tickets))
 	for _, t := range tickets {
 		rows = append(rows, inboxRow{t, CustomerStatus(t.InternalStatus), sender(sess, t)})
 	}
-	// Ticket links carry the filters so the list stays the same while reading.
-	keep := url.Values{}
-	for k, v := range map[string]string{"status": status, "project": project, "q": search} {
-		if v != "" {
-			keep.Set(k, v)
+	// Ticket links carry the filters and page so the list stays the same while reading.
+	query := func(page int) template.URL {
+		keep := url.Values{}
+		for k, v := range map[string]string{"status": status, "project": project, "q": search} {
+			if v != "" {
+				keep.Set(k, v)
+			}
 		}
-	}
-	filters := ""
-	if len(keep) > 0 {
-		filters = "?" + keep.Encode()
+		if page > 1 {
+			keep.Set("page", strconv.Itoa(page))
+		}
+		if len(keep) == 0 {
+			return ""
+		}
+		return template.URL("?" + keep.Encode()) // #nosec G203: built by url.Values.Encode
 	}
 	return map[string]any{
 		"S": sess, "Tickets": rows, "Status": status, "Project": project, "ProjectName": projectName,
-		"Search": search, "Filters": template.URL(filters), // #nosec G203: built by url.Values.Encode
+		"Search": search, "Filters": query(page),
+		"Page": page, "HasNewer": page > 1, "HasOlder": hasOlder,
+		"NewerURL": template.URL("/my-tickets") + query(page-1), "OlderURL": template.URL("/my-tickets") + query(page+1),
 		"ShowRaisedBy": true, "ShowProject": len(sess.Projects) > 0,
 	}, nil
 }

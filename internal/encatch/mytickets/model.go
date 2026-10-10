@@ -258,6 +258,7 @@ type ListQuery struct {
 	ProjectID  string // optional project filter
 	Search     string // optional: subject text or ticket number
 	Limit      int
+	Offset     int // rows to skip, for paging (newest activity first)
 }
 
 // Visible reports whether a session may see a ticket. It mirrors the SQL in the

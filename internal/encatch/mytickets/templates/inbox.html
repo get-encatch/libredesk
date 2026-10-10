@@ -6,7 +6,7 @@
   <div class="inbox-list-head">
     <div class="flex items-baseline justify-between gap-2">
       <h1 class="truncate text-base font-semibold tracking-tight {{if $wide}}lg:text-xl{{end}}">{{or .Status "All tickets"}}{{if .ProjectName}} <span class="font-normal text-muted-foreground">· {{.ProjectName}}</span>{{end}}</h1>
-      <span class="shrink-0 text-xs text-muted-foreground">{{len .Tickets}} {{if eq (len .Tickets) 1}}ticket{{else}}tickets{{end}}</span>
+      <span class="shrink-0 text-xs text-muted-foreground">{{if or .HasNewer .HasOlder}}Page {{.Page}}{{else}}{{len .Tickets}} {{if eq (len .Tickets) 1}}ticket{{else}}tickets{{end}}{{end}}</span>
     </div>
     <form method="get" action="/my-tickets" class="search" role="search">
       {{if .Status}}<input type="hidden" name="status" value="{{.Status}}">{{end}}
@@ -53,12 +53,19 @@
     </li>
     {{else}}
     <li class="px-4 py-12 text-center">
-      <p class="text-sm font-medium">{{if .Search}}No tickets match “{{.Search}}”{{else if or .Status .ProjectName}}No tickets in this view{{else}}No tickets yet{{end}}</p>
-      <p class="mt-1 text-xs text-muted-foreground">{{if or .Search .Status .ProjectName}}Try another search or view.{{else}}Raise a ticket and we'll get back to you.{{end}}</p>
+      <p class="text-sm font-medium">{{if .HasNewer}}No older tickets{{else if .Search}}No tickets match “{{.Search}}”{{else if or .Status .ProjectName}}No tickets in this view{{else}}No tickets yet{{end}}</p>
+      <p class="mt-1 text-xs text-muted-foreground">{{if .HasNewer}}You've reached the end of this list.{{else if or .Search .Status .ProjectName}}Try another search or view.{{else}}Raise a ticket and we'll get back to you.{{end}}</p>
       {{if .Search}}<a class="btn btn-outline btn-sm mt-4" href="/my-tickets{{if .Status}}?status={{.Status}}{{if .Project}}&amp;project={{.Project}}{{end}}{{else if .Project}}?project={{.Project}}{{end}}">Clear search</a>{{else if and .S.CanCreate (not (or .Status .ProjectName))}}<a class="btn btn-default btn-sm mt-4" href="/my-tickets/new">{{template "icon" "plus"}}New ticket</a>{{end}}
     </li>
     {{end}}
   </ul>
+  {{if or .HasNewer .HasOlder}}
+  <nav class="flex items-center justify-between gap-2 border-t px-4 py-2" aria-label="Pages">
+    {{if .HasNewer}}<a class="btn btn-ghost btn-sm" href="{{.NewerURL}}" rel="prev">{{template "icon" "arrow-left"}}Newer</a>{{else}}<span></span>{{end}}
+    <span class="text-xs text-muted-foreground">Page {{.Page}}</span>
+    {{if .HasOlder}}<a class="btn btn-ghost btn-sm" href="{{.OlderURL}}" rel="next">Older{{template "icon" "arrow-right"}}</a>{{else}}<span></span>{{end}}
+  </nav>
+  {{end}}
 </section>
 {{end}}
 
