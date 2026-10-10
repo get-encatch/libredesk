@@ -141,18 +141,24 @@ docker run --rm -v $PWD/backups/restic:/repo -v $PWD/secrets/restic-password:/pw
 
 ## My Tickets (customer pages)
 
-`support.encatch.com/my-tickets`: customers arrive from an Encatch backend app with a signed
-token (HS256 JWT, 60 s, one use) and get an 8-hour session to list, view, raise and reply to
-tickets. Config: `[my_tickets]` in `config.toml`. Issuer secrets live only in
-`secrets/my-tickets.env` on the server, one line per backend app:
+`support.encatch.com/my-tickets`: customers arrive from Encatch (core-accounts, Preferences >
+Tickets) with a signed token (HS256 JWT, 60 s, one use) and get an 8-hour session to list,
+view, raise and reply to tickets. Config: `[my_tickets]` in `config.toml`.
+
+Every Encatch instance (local, dev, uat, prod) signs with its own issuer,
+`encatch-accounts-<instance>`, and its own secret, and sends its own numeric ids. The helpdesk
+takes the instance from the verified issuer and prefixes org, project and user ids with it
+(`prod-42`), so ids from different instances never collide and one instance's secret can't
+speak for another. Tickets get the `encatch_instance` attribute. An instance is accepted only
+when its secret is configured. Secrets live only in `secrets/my-tickets.env` on the server:
 
 ```
-LIBREDESK_MY_TICKETS__ISSUERS__ENCATCH_DASHBOARD=current-secret,previous-secret
+LIBREDESK_MY_TICKETS__ISSUERS__ENCATCH_ACCOUNTS_PROD=current-secret,previous-secret
+LIBREDESK_MY_TICKETS__ISSUERS__ENCATCH_ACCOUNTS_UAT=...
 ```
 
-(issuer `encatch-dashboard` -> `ENCATCH_DASHBOARD`; list a previous secret during rotation).
-After editing it: `docker compose up -d app`. `my-tickets/make-link.py` is a reference token
-generator for backend teams and testing.
+(list a previous secret during rotation). After editing it: `docker compose up -d app`.
+`my-tickets/make-link.py --instance <instance>` is a reference token generator for testing.
 
 ## Adding object storage later
 

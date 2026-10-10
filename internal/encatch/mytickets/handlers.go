@@ -154,7 +154,7 @@ func (s *Service) Login(r *fastglue.Request) error {
 	}
 	sess := Session{
 		ContactID: contactID, Email: claims.Email, Name: strings.TrimSpace(first + " " + last),
-		Issuer: claims.Issuer, OrgID: string(claims.OrgID), OrgName: strings.TrimSpace(claims.OrgName),
+		Issuer: claims.Issuer, Instance: claims.Instance, OrgID: string(claims.OrgID), OrgName: strings.TrimSpace(claims.OrgName),
 		SupportTier: claims.SupportTier, Scope: claims.Scope, Projects: claims.Projects,
 		CurrentProjectID: string(claims.CurrentProjectID),
 	}
@@ -163,7 +163,7 @@ func (s *Service) Login(r *fastglue.Request) error {
 		s.lo.Error("my-tickets: creating session", "error", err)
 		return s.renderError(r, fasthttp.StatusInternalServerError, "Something went wrong. Please try again.")
 	}
-	s.lo.Info("my-tickets: sign-in", "iss", claims.Issuer, "user", string(claims.ExternalUserID), "org", sess.OrgID, "scope", sess.Scope, "contact_id", contactID)
+	s.lo.Info("my-tickets: sign-in", "iss", claims.Issuer, "instance", sess.Instance, "user", string(claims.ExternalUserID), "org", sess.OrgID, "scope", sess.Scope, "contact_id", contactID)
 
 	c := fasthttp.AcquireCookie()
 	defer fasthttp.ReleaseCookie(c)
@@ -337,7 +337,7 @@ func (s *Service) Create(r *fastglue.Request) error {
 	}
 
 	attrs := map[string]any{
-		AttrOrgID: sess.OrgID, AttrOrgName: sess.OrgName, AttrSourceApp: sess.Issuer,
+		AttrOrgID: sess.OrgID, AttrOrgName: sess.OrgName, AttrSourceApp: sess.Issuer, AttrInstance: sess.Instance,
 	}
 	if sess.SupportTier != "" {
 		attrs[AttrTicketTier] = sess.SupportTier

@@ -21,7 +21,7 @@
       "key": "org_id",
       "name": "Org ID",
       "type": "text",
-      "description": "Encatch org the ticket was raised for"
+      "description": "Encatch org the ticket was raised for, prefixed with its instance (e.g. prod-42)"
     },
     {
       "key": "org_name",
@@ -57,7 +57,7 @@
       "key": "project_id",
       "name": "Project ID",
       "type": "text",
-      "description": "Encatch project the ticket is about"
+      "description": "Encatch project the ticket is about, prefixed with its instance (e.g. prod-17)"
     },
     {
       "key": "project_name",
@@ -70,6 +70,12 @@
       "name": "Source app",
       "type": "text",
       "description": "Backend app that raised the ticket via My Tickets; empty = email"
+    },
+    {
+      "key": "encatch_instance",
+      "name": "Encatch instance",
+      "type": "text",
+      "description": "Encatch instance the ticket came from via My Tickets: local, dev, uat or prod; empty = email"
     }
   ],
   "requested_priority_labels": {

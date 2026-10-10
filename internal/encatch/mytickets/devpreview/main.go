@@ -43,7 +43,7 @@ func main() {
 	lo := logf.New(logf.Opts{Level: logf.InfoLevel})
 	backend := newSampleBackend()
 	svc, err := mytickets.New(mytickets.Opts{
-		Verifier: &mytickets.Verifier{Secrets: map[string][]string{"preview": {secret}},
+		Verifier: &mytickets.Verifier{Secrets: map[string][]string{"encatch_accounts_local": {secret}},
 			MaxLifetime: time.Minute, Leeway: 30 * time.Second, ValidTiers: tiers},
 		Store:         mytickets.NewStore(rdb, 8*time.Hour),
 		Backend:       backend,
@@ -118,7 +118,7 @@ func previewLogin(r *fastglue.Request) error {
 	}
 	now := time.Now()
 	tok, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"iss": "preview", "external_user_id": p.id, "email": p.email, "name": p.name,
+		"iss": "encatch-accounts-local", "instance": "local", "external_user_id": p.id, "email": p.email, "name": p.name,
 		"org_id": 42, "org_name": "BigCorp", "support_tier": string(q.Peek("tier")), "scope": string(q.Peek("scope")),
 		"projects":           []map[string]any{{"id": 17, "name": "Mobile app"}, {"id": 18, "name": "Website"}},
 		"current_project_id": 17,
@@ -141,12 +141,12 @@ type sampleBackend struct {
 }
 
 func newSampleBackend() *sampleBackend {
-	b := &sampleBackend{files: map[string]mytickets.Upload{}, contacts: map[string]int{"1": 1, "2": 2, "3": 3}, names: map[int]string{1: "Anita Rao", 2: "Ravi Kumar", 3: "Meera Shah"},
+	b := &sampleBackend{files: map[string]mytickets.Upload{}, contacts: map[string]int{"local-1": 1, "local-2": 2, "local-3": 3}, names: map[int]string{1: "Anita Rao", 2: "Ravi Kumar", 3: "Meera Shah"},
 		tickets: map[string]*mytickets.TicketSummary{}, msgs: map[string][]mytickets.Message{}, next: 140}
 	ago := func(h int) time.Time { return time.Now().Add(-time.Duration(h) * time.Hour) }
 	add := func(ref string, contact int, subject, status, project, projectName string, created, updated time.Time, msgs ...mytickets.Message) {
 		b.tickets[ref] = &mytickets.TicketSummary{UUID: "u" + ref, ReferenceNumber: ref, Subject: subject, InternalStatus: status,
-			ContactID: contact, RaisedBy: b.names[contact], OrgID: "42", ProjectID: project, ProjectName: projectName, CreatedAt: created, UpdatedAt: updated}
+			ContactID: contact, RaisedBy: b.names[contact], OrgID: "local-42", ProjectID: project, ProjectName: projectName, CreatedAt: created, UpdatedAt: updated}
 		b.msgs["u"+ref] = msgs
 	}
 	cust := func(who, html string, h int) mytickets.Message {
@@ -155,19 +155,19 @@ func newSampleBackend() *sampleBackend {
 	agent := func(who, html string, h int) mytickets.Message {
 		return mytickets.Message{AuthorName: who, HTML: html, CreatedAt: ago(h)}
 	}
-	add("131", 1, "Survey not showing on iOS 18 after SDK update", "Waiting on customer", "17", "Mobile app", ago(50), ago(3),
+	add("131", 1, "Survey not showing on iOS 18 after SDK update", "Waiting on customer", "local-17", "Mobile app", ago(50), ago(3),
 		cust("Anita Rao", "<p>Since updating the iOS SDK to 2.4.1, our in-app survey no longer appears. Android is fine.</p><p>Steps: open app, complete onboarding, survey should trigger on screen 3.</p>", 50),
 		agent("Rahul Gorad", "<p>Hi Anita, thanks for the details. Could you share your <strong>workspace ID</strong> and the form ID? A short screen recording would also help.</p>", 3))
-	add("128", 1, "How do I target users by page URL?", "Resolved", "18", "Website", ago(120), ago(96),
+	add("128", 1, "How do I target users by page URL?", "Resolved", "local-18", "Website", ago(120), ago(96),
 		cust("Anita Rao", "<p>We want the NPS survey only on /pricing. Is that possible without code?</p>", 120),
 		agent("Saurav Choudhary", "<p>Yes. In the form's <em>Triggers</em>, add a <strong>Page visit</strong> rule with URL contains <code>/pricing</code>. No code change needed.</p>", 100),
 		cust("Anita Rao", "<p>Works perfectly, thanks!</p>", 96))
-	add("135", 2, "Webhook destination returning 401", "Waiting on engineering", "17", "Mobile app", ago(20), ago(5),
+	add("135", 2, "Webhook destination returning 401", "Waiting on engineering", "local-17", "Mobile app", ago(20), ago(5),
 		cust("Ravi Kumar", "<p>Our webhook destination started failing with 401 since yesterday. Signing secret unchanged.</p>", 20),
 		agent("Akash Patel", "<p>Thanks Ravi, we've reproduced this and passed it to engineering. We'll update you as soon as there's a fix.</p>", 5))
 	add("137", 3, "Invoice address change", "Open", "", "", ago(4), ago(4),
 		cust("Meera Shah", "<p>Please update our billing address on future invoices.</p>", 4))
-	add("139", 2, "Export responses to CSV is slow", "Open", "18", "Website", ago(2), ago(1),
+	add("139", 2, "Export responses to CSV is slow", "Open", "local-18", "Website", ago(2), ago(1),
 		cust("Ravi Kumar", "<p>CSV export for our largest form takes several minutes. Is there a faster way?</p>", 2))
 	return b
 }

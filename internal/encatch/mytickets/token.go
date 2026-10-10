@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -25,7 +26,18 @@ const (
 	ScopeOrg     = "org"
 )
 
+// Issuers are named IssuerPrefix + instance, e.g. "encatch-accounts-prod". Each Encatch
+// instance (local, dev, uat, prod, ...) has its own database, so its numeric ids repeat
+// across instances. The helpdesk takes the instance from the verified issuer and
+// prefixes every id with it ("prod-42"); a token signed with one instance's secret
+// can't claim another instance's orgs, projects or users.
+const IssuerPrefix = "encatch-accounts-"
+
 var (
+	instanceRe = regexp.MustCompile(`^[a-z0-9]{1,16}$`)
+	numericRe  = regexp.MustCompile(`^[0-9]{1,18}$`)
+	userIDRe   = regexp.MustCompile(`^[A-Za-z0-9-]{1,64}$`) // numeric id or uuid
+
 	ErrUnknownIssuer = errors.New("unknown issuer")
 	ErrBadToken      = errors.New("invalid token")
 	ErrTokenTooLong  = errors.New("token lifetime too long")
@@ -77,7 +89,17 @@ type Claims struct {
 	Projects         []Project `json:"projects"`
 	CurrentProjectID ID        `json:"current_project_id"`
 	Scope            string    `json:"scope"`
+	Instance         string    `json:"instance"` // must match the issuer's instance
 	jwt.RegisteredClaims
+}
+
+// InstanceOf returns the instance an issuer belongs to ("encatch-accounts-prod" -> "prod").
+func InstanceOf(issuer string) (string, bool) {
+	inst, ok := strings.CutPrefix(issuer, IssuerPrefix)
+	if !ok || !instanceRe.MatchString(inst) {
+		return "", false
+	}
+	return inst, true
 }
 
 // Verifier checks tokens against per-issuer secrets.
@@ -140,6 +162,13 @@ func (v *Verifier) Verify(token string) (*Claims, error) {
 }
 
 func (v *Verifier) check(c *Claims) error {
+	inst, ok := InstanceOf(c.Issuer)
+	if !ok {
+		return fmt.Errorf("%w: issuer must be %s<instance>", ErrUnknownIssuer, IssuerPrefix)
+	}
+	if c.Instance != inst {
+		return fmt.Errorf("%w: instance %q doesn't match issuer %q", ErrBadToken, c.Instance, c.Issuer)
+	}
 	if c.IssuedAt == nil || c.ExpiresAt == nil {
 		return fmt.Errorf("%w: iat and exp are required", ErrBadToken)
 	}
@@ -165,6 +194,32 @@ func (v *Verifier) check(c *Claims) error {
 	}
 	if c.SupportTier != "" && !contains(v.ValidTiers, c.SupportTier) {
 		c.SupportTier = "" // unknown tier: fall back to the contact's tier
+	}
+	return c.prefix(inst)
+}
+
+// prefix checks the instance's own ids and namespaces them with the instance, so ids
+// from different instances never meet: org/project "42" from prod becomes "prod-42".
+func (c *Claims) prefix(inst string) error {
+	if !userIDRe.MatchString(string(c.ExternalUserID)) {
+		return fmt.Errorf("%w: external_user_id must be an id or uuid", ErrBadToken)
+	}
+	if !numericRe.MatchString(string(c.OrgID)) {
+		return fmt.Errorf("%w: org_id must be a number", ErrBadToken)
+	}
+	p := func(id ID) ID { return ID(inst + "-" + string(id)) }
+	c.ExternalUserID, c.OrgID = p(c.ExternalUserID), p(c.OrgID)
+	for i := range c.Projects {
+		if !numericRe.MatchString(string(c.Projects[i].ID)) {
+			return fmt.Errorf("%w: project ids must be numbers", ErrBadToken)
+		}
+		c.Projects[i].ID = p(c.Projects[i].ID)
+	}
+	if c.CurrentProjectID != "" {
+		if !numericRe.MatchString(string(c.CurrentProjectID)) {
+			return fmt.Errorf("%w: current_project_id must be a number", ErrBadToken)
+		}
+		c.CurrentProjectID = p(c.CurrentProjectID)
 	}
 	return nil
 }

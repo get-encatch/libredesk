@@ -23,7 +23,7 @@ var tiers = []string{"SaaS Standard", "SaaS Growth", "Growth Plus", "Enterprise 
 
 func testVerifier() *Verifier {
 	return &Verifier{
-		Secrets:     map[string][]string{"encatch_dashboard": {"current-secret", "old-secret"}},
+		Secrets:     map[string][]string{"encatch_accounts_prod": {"current-secret", "old-secret"}},
 		MaxLifetime: 60 * time.Second, Leeway: 30 * time.Second, ValidTiers: tiers,
 	}
 }
@@ -40,7 +40,7 @@ func sign(t *testing.T, secret string, claims jwt.MapClaims) string {
 func baseClaims() jwt.MapClaims {
 	now := time.Now()
 	return jwt.MapClaims{
-		"iss": "encatch-dashboard", "external_user_id": 9134, "email": "Anita@BigCorp.com", "name": "Anita Rao",
+		"iss": "encatch-accounts-prod", "instance": "prod", "external_user_id": 9134, "email": "Anita@BigCorp.com", "name": "Anita Rao",
 		"org_id": 42, "org_name": "BigCorp", "support_tier": "Growth Plus", "scope": "self",
 		"projects": []map[string]any{{"id": 17, "name": "Mobile app"}, {"id": "18", "name": "Website"}},
 		"iat":      now.Unix(), "exp": now.Add(60 * time.Second).Unix(), "jti": fmt.Sprintf("j-%d", now.UnixNano()),
@@ -55,7 +55,7 @@ func TestVerify(t *testing.T) {
 	if err != nil {
 		t.Fatalf("valid token rejected: %v", err)
 	}
-	if c.Email != "anita@bigcorp.com" || c.OrgID != "42" || c.ExternalUserID != "9134" || c.Projects[1].ID != "18" {
+	if c.Email != "anita@bigcorp.com" || c.OrgID != "prod-42" || c.ExternalUserID != "prod-9134" || c.Projects[1].ID != "prod-18" {
 		t.Fatalf("claims not normalised: %+v", c)
 	}
 	if _, err := v.Verify(sign(t, "old-secret", baseClaims())); err != nil {
@@ -317,13 +317,14 @@ func TestFlow(t *testing.T) {
 		t.Fatalf("foreign project accepted: %s", resp.Body())
 	}
 
-	resp = h.do(h.svc.Create, "POST", "/my-tickets/new", sid, "csrf="+csrf+"&subject=Checkout+broken&message=Steps%0A1.+open&project=17&priority=Urgent", nil)
+	resp = h.do(h.svc.Create, "POST", "/my-tickets/new", sid, "csrf="+csrf+"&subject=Checkout+broken&message=Steps%0A1.+open&project=prod-17&priority=Urgent", nil)
 	if resp.StatusCode() != fasthttp.StatusSeeOther || string(resp.Header.Peek("Location")) != "/my-tickets/100" {
 		t.Fatalf("create: %d %q %s", resp.StatusCode(), resp.Header.Peek("Location"), resp.Body())
 	}
 	a := h.be.attrs["100"]
-	if a[AttrOrgID] != "42" || a[AttrTicketTier] != "Growth Plus" || a[AttrRequestedPriority] != "Urgent" ||
-		a[AttrProjectID] != "17" || a[AttrProjectName] != "Mobile app" || a[AttrSourceApp] != "encatch-dashboard" {
+	if a[AttrOrgID] != "prod-42" || a[AttrTicketTier] != "Growth Plus" || a[AttrRequestedPriority] != "Urgent" ||
+		a[AttrProjectID] != "prod-17" || a[AttrProjectName] != "Mobile app" || a[AttrSourceApp] != "encatch-accounts-prod" ||
+		a[AttrInstance] != "prod" {
 		t.Fatalf("ticket attrs = %v", a)
 	}
 
@@ -352,7 +353,7 @@ func TestFlow(t *testing.T) {
 	}
 
 	// A teammate's ticket is hidden in self scope and returns 404, not 403.
-	h.be.tickets["900"] = TicketSummary{UUID: "u900", ReferenceNumber: "900", ContactID: 99, OrgID: "42"}
+	h.be.tickets["900"] = TicketSummary{UUID: "u900", ReferenceNumber: "900", ContactID: 99, OrgID: "prod-42"}
 	if resp := h.do(h.svc.View, "GET", "/my-tickets/900", sid, "", map[string]string{"ref": "900"}); resp.StatusCode() != fasthttp.StatusNotFound {
 		t.Fatalf("teammate ticket in self scope: status %d", resp.StatusCode())
 	}
@@ -570,7 +571,7 @@ func TestSecretsWarning(t *testing.T) {
 	if body := string(h.do(h.svc.NewForm, "GET", "/my-tickets/new", sid, "", nil).Body()); !strings.Contains(body, "share passwords or secrets") {
 		t.Fatal("new-ticket form lacks the secrets warning")
 	}
-	h.be.tickets["500"] = TicketSummary{UUID: "u500", ReferenceNumber: "500", ContactID: 1, OrgID: "42", InternalStatus: "Open"}
+	h.be.tickets["500"] = TicketSummary{UUID: "u500", ReferenceNumber: "500", ContactID: 1, OrgID: "prod-42", InternalStatus: "Open"}
 	if body := string(h.do(h.svc.View, "GET", "/my-tickets/500", sid, "", map[string]string{"ref": "500"}).Body()); !strings.Contains(body, "include passwords, API keys or tokens") {
 		t.Fatal("reply box lacks the secrets reminder")
 	}
@@ -600,5 +601,71 @@ func TestUploadTotalLimit(t *testing.T) {
 	h.svc.uploadLimits = func() UploadLimits { return UploadLimits{MaxMB: 1, MaxTotalMB: 50, Extensions: []string{"txt"}} }
 	if body := string(h.do(h.svc.NewForm, "GET", "/my-tickets/new", sid, "", nil).Body()); strings.Contains(body, "in total") {
 		t.Fatal("total shown although it doesn't limit anything")
+	}
+}
+
+func TestInstances(t *testing.T) {
+	v := testVerifier()
+	v.Secrets["encatch_accounts_uat"] = []string{"uat-secret"}
+	v.Secrets["encatch_dashboard"] = []string{"current-secret"} // an old-style issuer
+	mod := func(secret string, f func(jwt.MapClaims)) string {
+		c := baseClaims()
+		f(c)
+		return sign(t, secret, c)
+	}
+
+	// The instance comes from the issuer and prefixes every id.
+	c, err := v.Verify(mod("uat-secret", func(c jwt.MapClaims) {
+		c["iss"], c["instance"], c["external_user_id"] = "encatch-accounts-uat", "uat", "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
+		c["current_project_id"] = 17
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.OrgID != "uat-42" || c.Projects[0].ID != "uat-17" || c.CurrentProjectID != "uat-17" ||
+		c.ExternalUserID != "uat-0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b" || c.Instance != "uat" {
+		t.Fatalf("uat claims = %+v", c)
+	}
+
+	for name, tok := range map[string]string{
+		"instance claim missing":  mod("current-secret", func(c jwt.MapClaims) { delete(c, "instance") }),
+		"instance claim mismatch": mod("current-secret", func(c jwt.MapClaims) { c["instance"] = "uat" }),
+		// uat's secret can't speak for prod, even when the token says prod.
+		"other instance's secret": mod("uat-secret", func(c jwt.MapClaims) {}),
+		"old-style issuer":        mod("current-secret", func(c jwt.MapClaims) { c["iss"] = "encatch-dashboard" }),
+		"already prefixed org":    mod("current-secret", func(c jwt.MapClaims) { c["org_id"] = "prod-42" }),
+		"non-numeric project":     mod("current-secret", func(c jwt.MapClaims) { c["projects"] = []map[string]any{{"id": "x1", "name": "X"}} }),
+		"bad user id":             mod("current-secret", func(c jwt.MapClaims) { c["external_user_id"] = "a b" }),
+	} {
+		if _, err := v.Verify(tok); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+
+	if inst, ok := InstanceOf("encatch-accounts-local"); !ok || inst != "local" {
+		t.Errorf("InstanceOf(local) = %q, %v", inst, ok)
+	}
+	for _, iss := range []string{"encatch-accounts-", "encatch-accounts-PROD", "encatch-accounts-prod-eu", "other-prod"} {
+		if _, ok := InstanceOf(iss); ok {
+			t.Errorf("InstanceOf(%q) accepted", iss)
+		}
+	}
+}
+
+// Org 42 on uat and org 42 on prod are different customers: neither sees the other's tickets.
+func TestInstanceIsolation(t *testing.T) {
+	h := newHarness(t)
+	h.svc.verifier.Secrets["encatch_accounts_uat"] = []string{"uat-secret"}
+	c := baseClaims()
+	c["iss"], c["instance"], c["scope"] = "encatch-accounts-uat", "uat", "org"
+	sid := sessionCookie(t, h.do(h.svc.Login, "GET", "/my-tickets/login?token="+sign(t, "uat-secret", c), "", "", nil))
+	h.be.tickets["700"] = TicketSummary{UUID: "u700", ReferenceNumber: "700", ContactID: 50, OrgID: "prod-42", Subject: "Prod org ticket", InternalStatus: "Open"}
+	h.be.tickets["701"] = TicketSummary{UUID: "u701", ReferenceNumber: "701", ContactID: 51, OrgID: "uat-42", Subject: "Uat org ticket", InternalStatus: "Open"}
+	body := string(h.do(h.svc.List, "GET", "/my-tickets", sid, "", nil).Body())
+	if strings.Contains(body, "Prod org ticket") || !strings.Contains(body, "Uat org ticket") {
+		t.Fatalf("uat org-scope list leaked or missed tickets")
+	}
+	if resp := h.do(h.svc.View, "GET", "/my-tickets/700", sid, "", map[string]string{"ref": "700"}); resp.StatusCode() != fasthttp.StatusNotFound {
+		t.Fatalf("uat user opened a prod ticket: %d", resp.StatusCode())
 	}
 }

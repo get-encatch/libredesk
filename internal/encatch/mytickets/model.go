@@ -35,6 +35,7 @@ const (
 	AttrProjectID         = "project_id"
 	AttrProjectName       = "project_name"
 	AttrSourceApp         = "source_app"
+	AttrInstance          = "encatch_instance" // which Encatch instance the ticket came from
 )
 
 // Requested priority choices on the new-ticket form.
@@ -46,6 +47,7 @@ type Session struct {
 	Email            string    `json:"email"`
 	Name             string    `json:"name"`
 	Issuer           string    `json:"iss"`
+	Instance         string    `json:"instance"` // ids below are already prefixed with it
 	OrgID            string    `json:"org_id"`
 	OrgName          string    `json:"org_name"`
 	SupportTier      string    `json:"support_tier"`

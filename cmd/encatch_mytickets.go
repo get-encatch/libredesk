@@ -30,9 +30,10 @@ import (
 //
 // Issuer secrets come from the environment only, never config files:
 //
-//	LIBREDESK_MY_TICKETS__ISSUERS__ENCATCH_DASHBOARD="current-secret,previous-secret"
+//	LIBREDESK_MY_TICKETS__ISSUERS__ENCATCH_ACCOUNTS_PROD="current-secret,previous-secret"
 //
-// (issuer "encatch-dashboard" -> key "encatch_dashboard").
+// (issuer "encatch-accounts-prod" -> key "encatch_accounts_prod"). Issuers must be
+// encatch-accounts-<instance>; the helpdesk prefixes ids with the instance.
 func initEncatchMyTickets(g *fastglue.Fastglue) {
 	if !ko.Bool("my_tickets.enabled") {
 		return

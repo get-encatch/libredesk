@@ -38,10 +38,10 @@ if [ ! -f secrets/restic-password ]; then
 fi
 
 if [ ! -f secrets/my-tickets.env ]; then
-  # One issuer to start with, for testing; add one line per Encatch backend app.
-  echo "LIBREDESK_MY_TICKETS__ISSUERS__ENCATCH_TEST=$(openssl rand -hex 32)" > secrets/my-tickets.env
+  # One line per Encatch instance (issuer encatch-accounts-<instance>); see README > My Tickets.
+  echo "LIBREDESK_MY_TICKETS__ISSUERS__ENCATCH_ACCOUNTS_LOCAL=$(openssl rand -hex 32)" > secrets/my-tickets.env
   chmod 600 secrets/my-tickets.env
-  echo "created secrets/my-tickets.env (issuer: encatch-test)"
+  echo "created secrets/my-tickets.env (issuer: encatch-accounts-local)"
 fi
 
 echo "== containers"

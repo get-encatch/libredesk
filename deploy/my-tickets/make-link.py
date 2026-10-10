@@ -4,9 +4,13 @@
 Encatch backend apps do the same in their own language with any JWT library: an
 HS256 JWT with the claims below, valid for at most 60 seconds, used once.
 
-    MY_TICKETS_SECRET=... python3 make-link.py --iss encatch-test --user 9134 \\
+    MY_TICKETS_SECRET=... python3 make-link.py --instance prod --user 9134 \\
         --email anita@bigcorp.com --name "Anita Rao" --org 42 --org-name BigCorp \\
-        --tier "Growth Plus" --project 17:"Mobile app" --scope self
+        --project 17:"Mobile app" --scope project
+
+The issuer is encatch-accounts-<instance> (local, dev, uat, prod, ...), signed with that
+instance's secret. Send the instance's own numeric ids: the helpdesk prefixes them
+with the instance ("prod-42"), so ids from different instances never collide.
 
 Prints https://support.encatch.com/my-tickets/login?token=<jwt>; open it within 60 s.
 """
@@ -34,13 +38,12 @@ def sign_hs256(claims: dict, secret: str) -> str:
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--iss", required=True, help="issuing app, e.g. encatch-dashboard")
+    p.add_argument("--instance", required=True, help="Encatch instance: local, dev, uat or prod")
     p.add_argument("--user", required=True, help="Encatch user ID")
     p.add_argument("--email", required=True)
     p.add_argument("--name", default="")
     p.add_argument("--org", required=True, help="Encatch org ID")
     p.add_argument("--org-name", required=True)
-    p.add_argument("--tier", default="", help="the org's support tier")
     p.add_argument("--project", action="append", default=[], help='ID:"Name", repeatable')
     p.add_argument("--current-project", default="")
     p.add_argument("--scope", default="self", choices=["self", "project", "org"])
@@ -53,12 +56,10 @@ def main() -> None:
 
     now = int(time.time())
     claims = {
-        "iss": a.iss, "external_user_id": a.user, "email": a.email, "name": a.name,
+        "iss": f"encatch-accounts-{a.instance}", "instance": a.instance, "external_user_id": a.user, "email": a.email, "name": a.name,
         "org_id": a.org, "org_name": a.org_name, "scope": a.scope,
         "iat": now, "exp": now + 60, "jti": str(uuid.uuid4()),
     }
-    if a.tier:
-        claims["support_tier"] = a.tier
     if a.project:
         claims["projects"] = [{"id": pid, "name": name} for pid, _, name in (x.partition(":") for x in a.project)]
     if a.current_project:
