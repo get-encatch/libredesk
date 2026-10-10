@@ -88,7 +88,7 @@ func initEncatchMyTickets(g *fastglue.Fastglue) {
 				Store:    mytickets.NewStore(app.redis, sessionTTL),
 				Backend: &mytickets.LibredeskBackend{
 					Users: app.user, Conversations: app.conversation, Media: app.media, DB: db, InboxID: inboxID,
-					OrgTiers: &orgtiers.Store{DB: db, Tiers: ko.Strings("my_tickets.tiers")},
+					OrgTiers: &orgtiers.Store{DB: db, Tiers: ko.Strings("my_tickets.tiers")}, Logger: app.lo,
 				},
 				EligibleTiers: priorityTiers,
 				SessionTTL:    sessionTTL,

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/abhinavxd/libredesk/internal/attachment"
+	amodels "github.com/abhinavxd/libredesk/internal/automation/models"
 	"github.com/abhinavxd/libredesk/internal/conversation"
 	cmodels "github.com/abhinavxd/libredesk/internal/conversation/models"
 	"github.com/abhinavxd/libredesk/internal/encatch/orgtiers"
@@ -29,6 +30,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
 	"github.com/volatiletech/null/v9"
+	"github.com/zerodha/logf"
 )
 
 // LibredeskBackend implements Backend on top of libredesk's managers.
@@ -39,6 +41,7 @@ type LibredeskBackend struct {
 	DB            *sqlx.DB
 	InboxID       int
 	OrgTiers      *orgtiers.Store // our own package: support tiers per org
+	Logger        *logf.Logger
 }
 
 func (b *LibredeskBackend) RegisterOrg(instance, orgID, orgName string) (string, error) {
@@ -274,7 +277,7 @@ func (b *LibredeskBackend) Messages(uuid string) ([]Message, error) {
 	return out, nil
 }
 
-func (b *LibredeskBackend) CreateTicket(contactID int, subject, html string, attrs map[string]any, files []Upload) (string, error) {
+func (b *LibredeskBackend) CreateTicket(contactID int, subject, html string, attrs map[string]any, tags []string, files []Upload) (string, error) {
 	// Store files first, so a failed upload doesn't leave a ticket behind.
 	stored, err := b.storeUploads(files)
 	if err != nil {
@@ -285,6 +288,12 @@ func (b *LibredeskBackend) CreateTicket(contactID int, subject, html string, att
 	if err != nil {
 		b.deleteUploads(stored)
 		return "", fmt.Errorf("creating ticket: %w", err)
+	}
+	// Tag before the first message: the inbox list previews the newest message, which
+	// should be the customer's, and new-ticket rules can match the tag. A missing tag
+	// only costs filtering, so it doesn't fail the ticket.
+	if err := b.addTags(convUUID, tags); err != nil {
+		b.Logger.Error("my tickets: tagging new ticket", "uuid", convUUID, "tags", tags, "error", err)
 	}
 	// A contact message on a new conversation runs the same hooks as an incoming email:
 	// new-ticket automation rules (tier SLA, team assignment) and SLA tracking.
@@ -298,6 +307,22 @@ func (b *LibredeskBackend) CreateTicket(contactID int, subject, html string, att
 		return "", fmt.Errorf("loading new ticket: %w", err)
 	}
 	return c.ReferenceNumber, nil
+}
+
+// addTags adds tags to a conversation as the System agent, creating missing tags. It
+// goes through libredesk so agents see the activity, webhooks fire and open views update.
+func (b *LibredeskBackend) addTags(convUUID string, tags []string) error {
+	if len(tags) == 0 {
+		return nil
+	}
+	if _, err := b.DB.Exec(`INSERT INTO tags (name) SELECT unnest($1::text[]) ON CONFLICT (name) DO NOTHING`, pq.Array(tags)); err != nil {
+		return fmt.Errorf("creating tags: %w", err)
+	}
+	system, err := b.Users.GetSystemUser()
+	if err != nil {
+		return fmt.Errorf("loading System agent: %w", err)
+	}
+	return b.Conversations.SetConversationTags(convUUID, amodels.ActionAddTags, tags, system)
 }
 
 func (b *LibredeskBackend) AddReply(contactID int, convUUID, html string, files []Upload) error {

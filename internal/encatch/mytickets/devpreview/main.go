@@ -336,7 +336,7 @@ func (b *sampleBackend) Messages(uuid string) ([]mytickets.Message, error) {
 	return append([]mytickets.Message(nil), b.msgs[uuid]...), nil
 }
 
-func (b *sampleBackend) CreateTicket(contactID int, subject, html string, attrs map[string]any, files []mytickets.Upload) (string, error) {
+func (b *sampleBackend) CreateTicket(contactID int, subject, html string, attrs map[string]any, tags []string, files []mytickets.Upload) (string, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.next++

@@ -214,6 +214,7 @@ type fakeBackend struct {
 	contacts map[string]int
 	tickets  map[string]TicketSummary
 	attrs    map[string]map[string]any
+	tags     map[string][]string
 	msgs     map[string][]Message
 	files    []Upload
 	tiers    map[string]string // org -> tier set by an admin
@@ -241,7 +242,7 @@ func (f *fakeBackend) OrgTier(orgID string) (string, error) {
 }
 
 func newFake() *fakeBackend {
-	return &fakeBackend{contacts: map[string]int{}, tickets: map[string]TicketSummary{}, attrs: map[string]map[string]any{}, msgs: map[string][]Message{},
+	return &fakeBackend{contacts: map[string]int{}, tickets: map[string]TicketSummary{}, attrs: map[string]map[string]any{}, tags: map[string][]string{}, msgs: map[string][]Message{},
 		tiers: map[string]string{"prod-42": "Growth Plus"}, seenOrgs: map[string]string{}}
 }
 
@@ -273,12 +274,13 @@ func (f *fakeBackend) GetTicket(ref string) (TicketSummary, error) {
 	return t, nil
 }
 func (f *fakeBackend) Messages(uuid string) ([]Message, error) { return f.msgs[uuid], nil }
-func (f *fakeBackend) CreateTicket(contactID int, subject, html string, attrs map[string]any, files []Upload) (string, error) {
+func (f *fakeBackend) CreateTicket(contactID int, subject, html string, attrs map[string]any, tags []string, files []Upload) (string, error) {
 	ref := fmt.Sprint(100 + len(f.tickets))
 	uuid := "u" + ref
 	f.tickets[ref] = TicketSummary{UUID: uuid, ReferenceNumber: ref, Subject: subject, InternalStatus: "Open", ContactID: contactID,
 		OrgID: fmt.Sprint(attrs[AttrOrgID]), ProjectID: fmt.Sprint(attrs[AttrProjectID]), RaisedBy: "Anita Rao"}
 	f.attrs[ref] = attrs
+	f.tags[ref] = tags
 	f.msgs[uuid] = []Message{{FromCustomer: true, AuthorName: "Anita Rao", HTML: html + `<script>alert(1)</script>`}}
 	f.files = append(f.files, files...)
 	return ref, nil
@@ -386,6 +388,9 @@ func TestFlow(t *testing.T) {
 		a[AttrProjectID] != "prod-17" || a[AttrProjectName] != "Mobile app" || a[AttrSourceApp] != "encatch-accounts-prod" ||
 		a[AttrInstance] != "prod" {
 		t.Fatalf("ticket attrs = %v", a)
+	}
+	if tags := h.be.tags["100"]; len(tags) != 1 || tags[0] != "instance:prod" {
+		t.Fatalf("ticket tags = %v", tags)
 	}
 
 	resp = h.do(h.svc.List, "GET", "/my-tickets", sid, "", nil)

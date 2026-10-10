@@ -38,6 +38,10 @@ const (
 	AttrInstance          = "encatch_instance" // which Encatch instance the ticket came from
 )
 
+// InstanceTag is the tag every ticket gets, so agents can filter tickets by Encatch
+// instance (e.g. "instance:prod"). The tag is created when missing.
+func InstanceTag(instance string) string { return "instance:" + instance }
+
 // Requested priority choices on the new-ticket form.
 var PriorityChoices = []string{"Normal", "Express", "Urgent"}
 
@@ -276,7 +280,7 @@ type Backend interface {
 	// Messages returns the customer-visible messages of a ticket, oldest first.
 	Messages(uuid string) ([]Message, error)
 	// CreateTicket creates a contact-initiated ticket and returns its reference number.
-	CreateTicket(contactID int, subject, html string, attrs map[string]any, files []Upload) (string, error)
+	CreateTicket(contactID int, subject, html string, attrs map[string]any, tags []string, files []Upload) (string, error)
 	// RegisterOrg records that an org used My Tickets (keeping its name current) and
 	// returns its support tier, which the helpdesk owns (see internal/encatch/orgtiers).
 	RegisterOrg(instance, orgID, orgName string) (string, error)

@@ -389,7 +389,7 @@ func (s *Service) Create(r *fastglue.Request) error {
 	if PriorityEligible(tier, s.eligibleTiers) && contains(PriorityChoices, priority) {
 		attrs[AttrRequestedPriority] = priority
 	}
-	ref, err := s.backend.CreateTicket(sess.ContactID, subject, textToHTML(body), attrs, files)
+	ref, err := s.backend.CreateTicket(sess.ContactID, subject, textToHTML(body), attrs, []string{InstanceTag(sess.Instance)}, files)
 	if err != nil {
 		s.lo.Error("my-tickets: creating ticket", "error", err)
 		return s.renderNewForm(r, sess, subject, body, project, priority, "We couldn't create your ticket. Please try again.")
