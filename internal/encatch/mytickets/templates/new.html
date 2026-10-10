@@ -13,10 +13,13 @@
     {{if .S.Projects}}
     <div class="space-y-2">
       <label for="project" class="label">Project</label>
-      <select id="project" name="project" class="select">
-        <option value="">Not about a specific project</option>
-        {{$p := .Project}}{{range .S.Projects}}<option value="{{.ID}}" {{if eq (print .ID) $p}}selected{{end}}>{{.Name}}</option>{{end}}
-      </select>
+      <div class="select-wrap">
+        <select id="project" name="project" class="select">
+          <option value="">Not about a specific project</option>
+          {{$p := .Project}}{{range .S.Projects}}<option value="{{.ID}}" {{if eq (print .ID) $p}}selected{{end}}>{{.Name}}</option>{{end}}
+        </select>
+        {{template "icon" "chevron-down"}}
+      </div>
     </div>
     {{end}}
     <div class="space-y-2">

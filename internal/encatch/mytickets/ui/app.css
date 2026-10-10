@@ -73,7 +73,9 @@
   .label { @apply text-sm font-medium leading-none; }
   .input { @apply flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring; }
   .textarea { @apply flex min-h-[140px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring; }
-  .select { @apply flex h-9 w-full items-center rounded-md border border-input bg-transparent px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring; }
+  .select { @apply flex h-9 w-full appearance-none items-center rounded-md border border-input bg-transparent py-1 pl-3 pr-9 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring; }
+  .select-wrap { @apply relative; }
+  .select-wrap > .icon { @apply pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground; }
   .radio { @apply aspect-square h-4 w-4 rounded-full border border-primary text-primary accent-[var(--primary)] focus:outline-none focus-visible:ring-1 focus-visible:ring-ring; }
   /* Alert */
   .alert { @apply relative w-full rounded-lg border px-4 py-3 text-sm bg-background text-foreground; }
@@ -109,4 +111,24 @@
   .breadcrumb a { @apply transition-colors hover:text-foreground; }
   .breadcrumb .icon { @apply h-3.5 w-3.5; }
   .breadcrumb [aria-current] { @apply text-foreground; }
+}
+
+/* Where supported (Chromium today), the open list is styled like shadcn's Select
+   popover with no JavaScript. Other browsers fall back to the native menu. */
+@supports (appearance: base-select) {
+  .select, .select::picker(select) { appearance: base-select; }
+  .select::picker-icon { display: none; }
+  .select::picker(select) {
+    margin-top: 4px; padding: 4px;
+    border: 1px solid var(--border); border-radius: calc(var(--radius) - 2px);
+    background: var(--card); color: var(--card-foreground);
+  }
+  .select option {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px; border-radius: calc(var(--radius) - 4px);
+    font-size: 0.875rem; cursor: default;
+  }
+  .select option::checkmark { order: 1; margin-left: auto; }
+  .select option:hover, .select option:focus { background: var(--accent); color: var(--accent-foreground); outline: none; }
+  .select option:checked { font-weight: 500; }
 }
