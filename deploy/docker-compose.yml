@@ -104,6 +104,7 @@ services:
     restart: unless-stopped
     environment:
       DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+      DESK_DOMAIN: ${DESK_DOMAIN:?set DESK_DOMAIN in .env}
     ports:
       - "80:80"
       - "443:443"
@@ -114,6 +115,7 @@ services:
       - app
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./customer-site:/srv/customer-site:ro
       - ./data/caddy/data:/data
       - ./data/caddy/config:/config
 

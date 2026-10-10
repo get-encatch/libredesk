@@ -40,7 +40,7 @@ This repo is **get-encatch/libredesk**, the Encatch (CMSS) fork of [abhinavxd/li
 
 ## Production deployment
 
-- `deploy/` holds our production stack for **support.encatch.com** (server `ubuntu@103.205.140.125`, installed in `/srv/libredesk`). `deploy/README.md` is the runbook: install/update, backups, restore.
+- `deploy/` holds our production stack (server `ubuntu@103.205.140.125`, installed in `/srv/libredesk`). Two domains: **desk.encatch.com** for agents (full app, libredesk Root URL) and **support.encatch.com** for customers (Caddy allowlist of customer paths; everything else shows a static page). New customer-facing features must be added to the support allowlist in `deploy/Caddyfile`. `deploy/README.md` is the runbook: install/update, backups, restore.
 - Stack: our GHCR app image (version pinned via `LIBREDESK_VERSION` in the server's `.env`), `postgres:18-alpine` with pgBackRest, Redis, Caddy for HTTPS. Upstream's root `docker-compose.yml` is untouched and not used in production.
 - Backups (decided 2026-10-09): pgBackRest weekly full, daily differential, 6-hourly incremental, continuous WAL, keep 5 fulls; nightly `pg_dump` for 7 days; uploads via restic every 6h for 31 days; monthly automated restore test. All on the same disk for now; object storage (pgBackRest `repo2`) is planned.
 - Secrets (`.env`, `secrets/restic-password`) exist only on the server and are git-ignored. Never commit them.

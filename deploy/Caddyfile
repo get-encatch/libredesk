@@ -1,8 +1,50 @@
-{$DOMAIN} {
+# Agents: the full libredesk app (login, inboxes, admin). Libredesk's Root URL points here.
+{$DESK_DOMAIN} {
 	encode zstd gzip
 	# Uploads can be up to 100MB (app.server.max_body_size in config.toml).
 	request_body {
 		max_size 100MB
 	}
 	reverse_proxy app:9000
+}
+
+# Customers: only customer-facing paths reach libredesk. Anything else (typos, /, /login,
+# /admin) gets a static "open Support from your dashboard" page, so customers never see
+# the agent login.
+{$DOMAIN} {
+	encode zstd gzip
+	request_body {
+		max_size 100MB
+	}
+
+	@customer path /my-tickets /my-tickets/* \
+ /hc/* /api/v1/public/* /sitemap.xml /robots.txt \
+ /csat/* /api/v1/csat/* \
+ /widget /widget.js /widget/* /api/v1/widget/* \
+ /uploads/* /static/public/* /assets/* /images/* \
+ /health
+	handle @customer {
+		reverse_proxy app:9000
+	}
+
+	# Agent password links sent before the domain split pointed at this domain; send them
+	# (with their token) to the agents' domain instead of the customer 404 page.
+	@agentLinks path /set-password /reset-password
+	handle @agentLinks {
+		redir https://{$DESK_DOMAIN}{uri} 302
+	}
+
+	handle / {
+		root * /srv/customer-site
+		rewrite * /index.html
+		file_server
+	}
+
+	handle {
+		root * /srv/customer-site
+		rewrite * /index.html
+		file_server {
+			status 404
+		}
+	}
 }

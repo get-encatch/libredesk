@@ -1,4 +1,4 @@
-# Production deployment (support.encatch.com)
+# Production deployment (support.encatch.com / desk.encatch.com)
 
 Docker Compose stack for libredesk on a single server, with automated backups.
 
@@ -7,9 +7,18 @@ Docker Compose stack for libredesk on a single server, with automated backups.
 | app | `ghcr.io/get-encatch/libredesk:$LIBREDESK_VERSION` | Our release image, version pinned in `.env` |
 | db | `postgres:18-alpine` + pgBackRest (`postgres/Dockerfile`) | Floating 18.x tag, continuous WAL archiving |
 | redis | `redis:7-alpine` | Sessions/cache, not backed up |
-| caddy | `caddy:2-alpine` | HTTPS for `$DOMAIN`, certificates issued and renewed automatically |
+| caddy | `caddy:2-alpine` | HTTPS for both domains, certificates issued and renewed automatically |
 
 Server: `ssh -i helpdesk.pem ubuntu@103.205.140.125`, installed in `/srv/libredesk`.
+
+**Two domains** (see `Caddyfile`):
+- `desk.encatch.com` (`DESK_DOMAIN`): agents, the full app. Libredesk's **Root URL** is set to this.
+- `support.encatch.com` (`DOMAIN`): customers. Only allowlisted paths reach libredesk (help
+  centre, CSAT, chat widget, attachment links, static files, `/my-tickets`). Everything else
+  shows `customer-site/index.html` (200 on `/`, 404 elsewhere), so customers never see the
+  agent login. `/set-password` and `/reset-password` redirect to the desk domain.
+- After changing the `Caddyfile` or `customer-site/`, run `docker compose restart caddy`.
+  `caddy reload` is not enough: the file is bind-mounted, and rsync replaces it with a new file.
 
 ```
 /srv/libredesk
