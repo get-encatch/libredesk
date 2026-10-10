@@ -378,3 +378,49 @@ func TestInitials(t *testing.T) {
 		}
 	}
 }
+
+func TestSender(t *testing.T) {
+	sess := Session{ContactID: 7}
+	for _, c := range []struct {
+		t    TicketSummary
+		want string
+	}{
+		{TicketSummary{RaisedBy: "Anita Rao"}, "Anita Rao"},
+		{TicketSummary{RaisedBy: "Anita Rao", LastAuthorID: 3, LastAuthor: "Rahul Gorad", Preview: "Hi"}, "Encatch Support"},
+		{TicketSummary{RaisedBy: "Anita Rao", LastFromCustomer: true, LastAuthorID: 7, LastAuthor: "Ravi Kumar", Preview: "x"}, "You"},
+		{TicketSummary{RaisedBy: "Anita Rao", LastFromCustomer: true, LastAuthorID: 9, LastAuthor: "Meera Shah", Preview: "x"}, "Meera Shah"},
+		{TicketSummary{RaisedBy: "Anita Rao", LastFromCustomer: true, LastAuthorID: 9, Preview: "x"}, "Anita Rao"},
+	} {
+		if got := sender(sess, c.t); got != c.want {
+			t.Errorf("sender(%+v) = %q, want %q", c.t, got, c.want)
+		}
+	}
+}
+
+func TestMailDate(t *testing.T) {
+	now := time.Date(2026, 10, 10, 9, 0, 0, 0, ist)
+	for _, c := range []struct {
+		t    time.Time
+		want string
+	}{
+		{time.Date(2026, 10, 10, 8, 5, 0, 0, ist), "08:05"},
+		{time.Date(2026, 10, 9, 23, 0, 0, 0, ist), "9 Oct"},
+		{time.Date(2026, 10, 9, 19, 0, 0, 0, time.UTC), "00:30"}, // 00:30 IST on 10 Oct: today in IST
+		{time.Date(2025, 12, 31, 12, 0, 0, 0, ist), "31 Dec 2025"},
+	} {
+		if got := mailDate(c.t, now); got != c.want {
+			t.Errorf("mailDate(%v) = %q, want %q", c.t, got, c.want)
+		}
+	}
+}
+
+func TestClip(t *testing.T) {
+	if got := Clip("  Hello\n\n  world\t "); got != "Hello world" {
+		t.Errorf("Clip whitespace = %q", got)
+	}
+	long := strings.Repeat("ab ", 200)
+	got := Clip(long)
+	if n := len([]rune(got)); n > maxPreview+1 || !strings.HasSuffix(got, "…") {
+		t.Errorf("Clip long: %d runes, %q", n, got[len(got)-10:])
+	}
+}

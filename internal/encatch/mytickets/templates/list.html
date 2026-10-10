@@ -4,24 +4,33 @@
   <p class="text-sm text-muted-foreground">{{if eq .S.Scope "org"}}All tickets for {{.S.OrgName}}{{else if eq .S.Scope "project"}}Tickets for your projects in {{.S.OrgName}}{{else}}Tickets you raised for {{.S.OrgName}}{{end}}</p>
 </div>
 
-<div class="card divide-y overflow-hidden">
-  {{range .Tickets}}
-  <a href="/my-tickets/{{.ReferenceNumber}}" class="group flex items-center gap-3 px-5 py-4 transition-colors hover:bg-accent">
-    <div class="min-w-0 flex-1">
-      <div class="flex items-start justify-between gap-3">
-        <span class="font-medium leading-snug [overflow-wrap:anywhere]">{{.Subject}}</span>
-        {{template "status" .Status}}
+{{if .Tickets}}
+<ul class="mail-list">
+  {{range .Tickets}}{{$waiting := eq .Status "Waiting on you"}}
+  <li>
+    <a href="/my-tickets/{{.ReferenceNumber}}" class="mail-item {{if $waiting}}mail-item-unread{{end}}">
+      <div class="flex items-center gap-2">
+        <span class="truncate text-sm {{if $waiting}}font-semibold{{else}}font-medium{{end}}">{{.Sender}}</span>
+        {{if $waiting}}<span class="mail-dot" title="Waiting on your reply"></span>{{end}}
+        <time class="ml-auto shrink-0 text-xs {{if $waiting}}font-medium text-foreground{{else}}text-muted-foreground{{end}}" datetime="{{.UpdatedAt.Format "2006-01-02T15:04:05Z07:00"}}" title="{{date .UpdatedAt}}">{{mailDate .UpdatedAt}}</time>
       </div>
-      <p class="mt-1 text-xs text-muted-foreground">#{{.ReferenceNumber}} · updated {{date .UpdatedAt}}{{if and $.ShowProject .ProjectName}} · {{.ProjectName}}{{end}}{{if $.ShowRaisedBy}} · raised by {{.RaisedBy}}{{end}}</p>
-    </div>
-    <span class="hidden text-muted-foreground sm:block">{{template "icon" "chevron"}}</span>
-  </a>
-  {{else}}
-  <div class="px-6 py-12 text-center">
-    <p class="font-medium">{{if or .Status .ProjectName}}No tickets match this filter{{else}}No tickets here yet{{end}}</p>
-    <p class="mt-1 text-sm text-muted-foreground">{{if or .Status .ProjectName}}Try another view from the sidebar.{{else}}Raise a ticket and we'll get back to you.{{end}}</p>
-    <a class="btn btn-default mt-4" href="/my-tickets/new">{{template "icon" "plus"}}New ticket</a>
-  </div>
+      <p class="text-sm {{if $waiting}}font-semibold{{else}}font-medium{{end}} leading-snug [overflow-wrap:anywhere]">{{.Subject}}</p>
+      {{if .Preview}}<p class="line-clamp-2 text-xs leading-relaxed text-muted-foreground [overflow-wrap:anywhere]">{{.Preview}}</p>{{end}}
+      <div class="flex flex-wrap items-center gap-1.5 pt-1">
+        {{template "status" .Status}}
+        <span class="badge badge-outline">#{{.ReferenceNumber}}</span>
+        {{if and $.ShowProject .ProjectName}}<span class="badge badge-outline">{{template "icon" "folder"}}{{.ProjectName}}</span>{{end}}
+        {{if $.ShowRaisedBy}}<span class="text-xs text-muted-foreground">raised by {{.RaisedBy}}</span>{{end}}
+      </div>
+    </a>
+  </li>
   {{end}}
+</ul>
+{{else}}
+<div class="card px-6 py-12 text-center">
+  <p class="font-medium">{{if or .Status .ProjectName}}No tickets match this filter{{else}}No tickets here yet{{end}}</p>
+  <p class="mt-1 text-sm text-muted-foreground">{{if or .Status .ProjectName}}Try another view from the sidebar.{{else}}Raise a ticket and we'll get back to you.{{end}}</p>
+  <a class="btn btn-default mt-4" href="/my-tickets/new">{{template "icon" "plus"}}New ticket</a>
 </div>
+{{end}}
 {{template "foot"}}{{end}}

@@ -49,26 +49,45 @@ SELECT c.uuid, c.reference_number, COALESCE(c.subject, '') AS subject, s.name AS
        COALESCE(c.custom_attributes->>'org_id', '') AS org_id,
        COALESCE(c.custom_attributes->>'project_id', '') AS project_id,
        COALESCE(c.custom_attributes->>'project_name', '') AS project_name,
-       c.created_at, COALESCE(c.last_message_at, c.created_at) AS updated_at
+       c.created_at, COALESCE(lm.created_at, c.created_at) AS updated_at,
+       COALESCE(lm.from_customer, false) AS last_from_customer, COALESCE(lm.sender_id, 0) AS last_author_id,
+       COALESCE(lm.sender_name, '') AS last_author, COALESCE(lm.preview, '') AS preview
 FROM conversations c
 JOIN conversation_statuses s ON s.id = c.status_id
 JOIN users u ON u.id = c.contact_id
+-- The latest customer-visible message, with the same filter as the ticket page.
+-- (conversations.last_message and last_message_at also count private notes.)
+LEFT JOIN LATERAL (
+    SELECT m.created_at, m.type = 'incoming' AS from_customer, m.sender_id,
+           TRIM(COALESCE(mu.first_name, '') || ' ' || COALESCE(mu.last_name, '')) AS sender_name,
+           LEFT(COALESCE(m.text_content, ''), 1000) AS preview
+    FROM conversation_messages m
+    LEFT JOIN users mu ON mu.id = m.sender_id
+    WHERE m.conversation_id = c.id AND m.private = false AND m.type IN ('incoming', 'outgoing')
+      AND (m.meta IS NULL OR NOT COALESCE((m.meta->>'continuity_email')::boolean, false))
+    ORDER BY m.created_at DESC
+    LIMIT 1
+) lm ON true
 WHERE %s
 ORDER BY updated_at DESC
 LIMIT %d`
 
 type listRow struct {
-	UUID            string    `db:"uuid"`
-	ReferenceNumber string    `db:"reference_number"`
-	Subject         string    `db:"subject"`
-	Status          string    `db:"status"`
-	ContactID       int       `db:"contact_id"`
-	RaisedBy        string    `db:"raised_by"`
-	OrgID           string    `db:"org_id"`
-	ProjectID       string    `db:"project_id"`
-	ProjectName     string    `db:"project_name"`
-	CreatedAt       time.Time `db:"created_at"`
-	UpdatedAt       time.Time `db:"updated_at"`
+	UUID             string    `db:"uuid"`
+	ReferenceNumber  string    `db:"reference_number"`
+	Subject          string    `db:"subject"`
+	Status           string    `db:"status"`
+	ContactID        int       `db:"contact_id"`
+	RaisedBy         string    `db:"raised_by"`
+	OrgID            string    `db:"org_id"`
+	ProjectID        string    `db:"project_id"`
+	ProjectName      string    `db:"project_name"`
+	CreatedAt        time.Time `db:"created_at"`
+	UpdatedAt        time.Time `db:"updated_at"`
+	LastFromCustomer bool      `db:"last_from_customer"`
+	LastAuthorID     int       `db:"last_author_id"`
+	LastAuthor       string    `db:"last_author"`
+	Preview          string    `db:"preview"`
 }
 
 // scopeWhere builds the WHERE clause and args for a list query. It must match Visible.
@@ -123,6 +142,8 @@ func (b *LibredeskBackend) ListTickets(q ListQuery) ([]TicketSummary, error) {
 			UUID: r.UUID, ReferenceNumber: r.ReferenceNumber, Subject: r.Subject, InternalStatus: r.Status,
 			ContactID: r.ContactID, RaisedBy: r.RaisedBy, OrgID: r.OrgID, ProjectID: r.ProjectID,
 			ProjectName: r.ProjectName, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+			LastFromCustomer: r.LastFromCustomer, LastAuthorID: r.LastAuthorID, LastAuthor: r.LastAuthor,
+			Preview: Clip(r.Preview),
 		})
 	}
 	return out, nil

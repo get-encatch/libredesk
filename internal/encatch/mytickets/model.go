@@ -1,6 +1,7 @@
 package mytickets
 
 import (
+	"strings"
 	"time"
 )
 
@@ -85,7 +86,25 @@ type TicketSummary struct {
 	ProjectID       string
 	ProjectName     string
 	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	UpdatedAt       time.Time // time of the latest customer-visible message
+
+	// Latest customer-visible message, for the list preview. Never private notes.
+	LastFromCustomer bool
+	LastAuthorID     int
+	LastAuthor       string
+	Preview          string
+}
+
+// maxPreview is the longest list preview, in runes.
+const maxPreview = 240
+
+// Clip collapses whitespace and shortens s for a list preview.
+func Clip(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if r := []rune(s); len(r) > maxPreview {
+		s = strings.TrimSpace(string(r[:maxPreview])) + "…"
+	}
+	return s
 }
 
 // Message is a customer-visible message in a ticket thread.

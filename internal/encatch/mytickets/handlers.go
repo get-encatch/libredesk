@@ -89,6 +89,7 @@ func New(o Opts) (*Service, error) {
 		"date":         func(t time.Time) string { return t.In(ist).Format("2 Jan 2006, 15:04") },
 		"assetVersion": func() string { return assetVersion },
 		"initials":     initials,
+		"mailDate":     func(t time.Time) string { return mailDate(t, time.Now()) },
 	}
 	tmpl, err := template.New("").Funcs(funcs).ParseFS(templateFS, "templates/*.html")
 	if err != nil {
@@ -194,10 +195,11 @@ func (s *Service) List(r *fastglue.Request) error {
 	type row struct {
 		TicketSummary
 		Status string
+		Sender string
 	}
 	rows := make([]row, 0, len(tickets))
 	for _, t := range tickets {
-		rows = append(rows, row{t, CustomerStatus(t.InternalStatus)})
+		rows = append(rows, row{t, CustomerStatus(t.InternalStatus), sender(sess, t)})
 	}
 	return s.render(r, fasthttp.StatusOK, "list.html", map[string]any{
 		"S": sess, "Tickets": rows, "Status": status, "Project": project, "ProjectName": projectName,
@@ -455,6 +457,36 @@ func textToHTML(text string) string {
 }
 
 // splitName splits a display name, falling back to the email's local part.
+// sender names who wrote a ticket's latest message, as the list shows it.
+func sender(sess Session, t TicketSummary) string {
+	switch {
+	case t.LastAuthorID == 0 && t.Preview == "":
+		return t.RaisedBy
+	case !t.LastFromCustomer:
+		return "Encatch Support"
+	case t.LastAuthorID == sess.ContactID:
+		return "You"
+	case t.LastAuthor != "":
+		return t.LastAuthor
+	default:
+		return t.RaisedBy
+	}
+}
+
+// mailDate formats a list timestamp like a mailbox: the time today, the day
+// this year, else the full date (IST).
+func mailDate(t, now time.Time) string {
+	t, now = t.In(ist), now.In(ist)
+	switch {
+	case t.Year() == now.Year() && t.YearDay() == now.YearDay():
+		return t.Format("15:04")
+	case t.Year() == now.Year():
+		return t.Format("2 Jan")
+	default:
+		return t.Format("2 Jan 2006")
+	}
+}
+
 // initials returns up to two letters for the sidebar avatar.
 func initials(name, email string) string {
 	words := strings.Fields(name)

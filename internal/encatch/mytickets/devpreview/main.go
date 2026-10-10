@@ -8,6 +8,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"html"
 	"log"
 	"net/http"
 	"os"
@@ -19,6 +20,7 @@ import (
 	"github.com/abhinavxd/libredesk/internal/encatch/mytickets"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/microcosm-cc/bluemonday"
 	"github.com/redis/go-redis/v9"
 	"github.com/valyala/fasthttp"
 	"github.com/zerodha/fastglue"
@@ -187,10 +189,34 @@ func (b *sampleBackend) ListTickets(q mytickets.ListQuery) ([]mytickets.TicketSu
 			(q.Status != "" && mytickets.CustomerStatus(t.InternalStatus) != q.Status) {
 			continue
 		}
-		out = append(out, *t)
+		row := *t
+		if msgs := b.msgs[t.UUID]; len(msgs) > 0 {
+			last := msgs[len(msgs)-1]
+			row.UpdatedAt, row.LastFromCustomer, row.LastAuthor = last.CreatedAt, last.FromCustomer, last.AuthorName
+			if last.FromCustomer {
+				row.LastAuthorID = b.idOf(last.AuthorName)
+			} else {
+				row.LastAuthorID = -1
+			}
+			row.Preview = mytickets.Clip(html.UnescapeString(strict.Sanitize(strings.ReplaceAll(last.HTML, "</p>", "</p> "))))
+		}
+		out = append(out, row)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].UpdatedAt.After(out[j].UpdatedAt) })
 	return out, nil
+}
+
+// strict strips sample message HTML down to text for list previews.
+var strict = bluemonday.StrictPolicy()
+
+// idOf finds a sample contact by name (the sample messages store names only).
+func (b *sampleBackend) idOf(name string) int {
+	for id, n := range b.names {
+		if n == name {
+			return id
+		}
+	}
+	return 0
 }
 
 func (b *sampleBackend) GetTicket(ref string) (mytickets.TicketSummary, error) {
