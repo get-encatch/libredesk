@@ -31,9 +31,10 @@
   {{$nav := dict "S" .S "List" $list "St" $st "P" $p "Theme" .Theme "Back" .Back}}
   <details class="nav-dropdown">
     <summary>{{template "icon" "menu"}}<span class="flex-1 truncate">{{if $list}}{{or $st "All tickets"}}{{range .S.Projects}}{{if eq (print .ID) $p}} · {{.Name}}{{end}}{{end}}{{else}}Tickets{{end}}</span>{{template "icon" "chevron-down"}}</summary>
-    <nav class="nav-dropdown-menu" aria-label="Tickets">{{template "navmenu" $nav}}</nav>
+    <nav class="nav-dropdown-menu" aria-label="Tickets">{{template "navmenu" $nav}}{{template "themeswitch" $nav}}</nav>
   </details>
   <nav class="sidebar-nav" aria-label="Tickets">{{template "navmenu" $nav}}</nav>
+  <div class="hidden border-t md:block">{{template "themeswitch" $nav}}</div>
   <div class="hidden items-center gap-3 border-t px-4 py-3 md:flex">
     <span class="avatar" aria-hidden="true">{{initials .S.Name .S.Email}}</span>
     <div class="min-w-0 flex-1 leading-tight">
@@ -81,11 +82,11 @@
   </ul>
 </div>
 {{end}}
-{{template "themeswitch" .}}
 {{end}}
 
 {{/* Light/dark switch: a form that saves the choice in a cookie; theme.js does it
-     without a reload. Takes the navmenu dict (S, Theme, Back). */}}
+     without a reload. Shown above the user bar on wide screens and at the end of the
+     menu on phones. Takes the navmenu dict (S, Theme, Back). */}}
 {{define "themeswitch"}}{{$t := or .Theme "system"}}
 <form method="post" action="/my-tickets/theme" class="theme-switch" aria-label="Appearance">
   <input type="hidden" name="csrf" value="{{.S.CSRF}}">
