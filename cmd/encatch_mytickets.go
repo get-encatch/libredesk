@@ -1,7 +1,7 @@
 package main
 
 // encatch: wires the My Tickets customer pages (internal/encatch/mytickets) into
-// libredesk. Upstream code only calls initEncatchMyTickets from initHandlers.
+// libredesk. Called from initEncatch (cmd/encatch.go).
 
 import (
 	"log"

@@ -51,9 +51,10 @@
         <div v-else class="w-8 flex-shrink-0" />
       </template>
 
+      <!-- encatch: incoming is also a flex row, for EncatchRedactMenu (bubbles are w-fit, so no visual change) -->
       <div
         class="w-full md:w-4/5"
-        :class="{ 'flex justify-end items-center gap-2': isOutgoing }"
+        :class="{ 'flex justify-end items-center gap-2': isOutgoing, 'flex items-center gap-2': !isOutgoing }"
         style="contain: inline-size"
       >
         <!-- Delete note menu (private notes, appears on hover, left of bubble) -->
@@ -78,6 +79,9 @@
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+
+        <!-- encatch: remove sensitive content (left of outgoing, right of incoming via order-last) -->
+        <EncatchRedactMenu :message="message" :outgoing="isOutgoing" />
 
         <div
           class="flex flex-col justify-end message-bubble"
@@ -286,6 +290,7 @@ import MessageEnvelope from './MessageEnvelope.vue'
 import CSATResponseDisplay from './CSATResponseDisplay.vue'
 import api from '@main/api'
 import { containsQuoteMarkers } from '@shared-ui/utils/quotedContent.js'
+import EncatchRedactMenu from '@main/features/encatch/redact/RedactMenu.vue' // encatch
 
 const extendedCssProperties = [...allowedCssProperties, 'transform', 'transform-origin']
 
