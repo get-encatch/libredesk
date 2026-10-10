@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main, encatch/main] # encatch: also check PRs into our integration branch
+    branches: [main]
 
 jobs:
   build-and-test:

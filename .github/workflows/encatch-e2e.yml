@@ -1,0 +1,140 @@
+name: E2E
+
+# encatch: our own workflow; upstream's frontend-ci.yml is left untouched. Runs upstream's
+# Cypress suite on PRs into encatch/main, split into parallel shards that each build and
+# install a fresh app and database. The shard list is .github/encatch-e2e-shards.py, which
+# also fails if a spec is in no shard. Informational for now: the required check is Go CI.
+
+on:
+  pull_request:
+    branches: [encatch/main]
+    paths-ignore:
+      - "**/*.md"
+      - "deploy/**"
+      - "docs/**"
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: Plan shards
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: plan
+        run: python3 .github/encatch-e2e-shards.py >> "$GITHUB_OUTPUT"
+
+  e2e:
+    name: e2e (${{ matrix.name }})
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    services:
+      db:
+        image: postgres:17-alpine
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: libredesk
+          POSTGRES_PASSWORD: libredesk
+          POSTGRES_DB: libredesk
+        options: >-
+          --health-cmd="pg_isready -U libredesk"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+      redis:
+        image: redis
+        ports:
+          - 6379:6379
+      mailhog:
+        image: mailhog/mailhog
+        ports:
+          - 1025:1025
+          - 8025:8025
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.0"
+          cache-dependency-path: go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install pnpm
+        run: npm install -g pnpm@9.15.3
+
+      - name: Cache pnpm store and Cypress binary
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/share/pnpm/store
+            ~/.cache/Cypress
+          key: e2e-${{ runner.os }}-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+          restore-keys: e2e-${{ runner.os }}-
+
+      - name: Install Cypress system packages
+        run: sudo apt-get update && sudo apt-get install -y libgtk2.0-0 libgtk-3-0 libgbm-dev libnotify-dev libnss3 libxss1 libasound2t64 libxtst6 xauth xvfb
+
+      - name: Build binary and frontend
+        run: make build
+
+      - name: Configure app
+        run: |
+          cp config.sample.toml config.toml
+          sed -i 's/host = "db"/host = "127.0.0.1"/' config.toml
+          sed -i 's/address = "redis:6379"/address = "localhost:6379"/' config.toml
+          mkdir -p uploads
+
+      - name: Frontend unit tests
+        if: matrix.name == 'api'
+        run: cd frontend && pnpm test:run
+
+      - name: Install, start the app and run this shard's specs
+        env:
+          LIBREDESK_SYSTEM_USER_PASSWORD: "StrongPass!123"
+          LIBREDESK_APP__SERVER__DISABLE_SECURE_COOKIES: "true"
+          LIBREDESK_RATE_LIMIT__WIDGET__REQUESTS_PER_MINUTE: "100000"
+          LIBREDESK_RATE_LIMIT__PUBLIC__REQUESTS_PER_MINUTE: "100000"
+          CYPRESS_SYSTEM_PASSWORD: "StrongPass!123"
+          CYPRESS_MAILHOG_URL: "http://localhost:8025"
+          SPECS: ${{ matrix.spec }}
+          ALLOW_FAILURE: ${{ matrix.allow_failure }}
+        run: |
+          ./libredesk --install --idempotent-install --yes --config ./config.toml
+          ./libredesk --upgrade --yes --config ./config.toml
+          ./libredesk --config ./config.toml &
+          for i in $(seq 1 60); do
+            if [ "$(curl --connect-timeout 1 --max-time 2 -s -o /dev/null -w '%{http_code}' http://localhost:9000/ || true)" = "200" ]; then
+              echo "app is up"; break
+            fi
+            if [ "$i" = "60" ]; then echo "app did not start"; exit 1; fi
+            sleep 1
+          done
+          cd frontend
+          if pnpm exec cypress run --e2e --headless --spec "$SPECS"; then
+            if [ "$ALLOW_FAILURE" = "true" ]; then
+              echo "::notice::Known upstream failures now pass: remove them from KNOWN_UPSTREAM_FAILURES in .github/encatch-e2e-shards.py"
+            fi
+          else
+            if [ "$ALLOW_FAILURE" = "true" ]; then
+              echo "::warning::Known upstream failures still fail (see .github/encatch-e2e-shards.py); not failing the check"
+            else
+              exit 1
+            fi
+          fi
