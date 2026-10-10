@@ -1,8 +1,9 @@
-{{/* head takes a dict: Title, S (session, nil when signed out), and on the inbox
-     pages Nav "list", the current Status and Project filters, and Wide (panes
-     layout instead of a centred column). */}}
+{{/* head takes a dict: Title, S (session, nil when signed out), Theme ("light",
+     "dark" or "" for the device's setting) and Back (where the theme switch returns),
+     and on the inbox pages Nav "list", the current Status and Project filters, and Wide
+     (panes layout instead of a centred column). */}}
 {{define "head"}}<!doctype html>
-<html lang="en">
+<html lang="en"{{with .Theme}} data-theme="{{.}}"{{end}}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -11,6 +12,7 @@
 <link rel="preload" href="/static/public/static/fonts/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/static/public/static/fonts.css">
 <link rel="stylesheet" href="/my-tickets/assets/app.css?v={{assetVersion}}">
+<script src="/my-tickets/assets/theme.js?v={{assetVersion}}" defer></script>
 </head>
 <body class="min-h-screen">
 {{if .S}}{{$list := eq (or .Nav "") "list"}}{{$st := or .Status ""}}{{$p := or .Project ""}}
@@ -26,12 +28,13 @@
   {{if .S.CanCreate}}<div class="hidden px-3 pb-2 pt-2 md:block">
     <a class="btn btn-default w-full" href="/my-tickets/new">{{template "icon" "plus"}}New ticket</a>
   </div>{{end}}
-  {{$nav := dict "S" .S "List" $list "St" $st "P" $p}}
+  {{$nav := dict "S" .S "List" $list "St" $st "P" $p "Theme" .Theme "Back" .Back}}
   <details class="nav-dropdown">
     <summary>{{template "icon" "menu"}}<span class="flex-1 truncate">{{if $list}}{{or $st "All tickets"}}{{range .S.Projects}}{{if eq (print .ID) $p}} · {{.Name}}{{end}}{{end}}{{else}}Tickets{{end}}</span>{{template "icon" "chevron-down"}}</summary>
-    <nav class="nav-dropdown-menu" aria-label="Tickets">{{template "navmenu" $nav}}</nav>
+    <nav class="nav-dropdown-menu" aria-label="Tickets">{{template "navmenu" $nav}}{{template "themeswitch" $nav}}</nav>
   </details>
   <nav class="sidebar-nav" aria-label="Tickets">{{template "navmenu" $nav}}</nav>
+  <div class="hidden border-t md:block">{{template "themeswitch" $nav}}</div>
   <div class="hidden items-center gap-3 border-t px-4 py-3 md:flex">
     <span class="avatar" aria-hidden="true">{{initials .S.Name .S.Email}}</span>
     <div class="min-w-0 flex-1 leading-tight">
@@ -81,6 +84,19 @@
 {{end}}
 {{end}}
 
+{{/* Light/dark toggle: one button that flips the page to the other theme. Matching the
+     device again clears the saved choice, so the page simply follows the device; theme.js
+     does this without a reload. Shown above the user bar on wide screens and at the end
+     of the menu on phones. Takes the navmenu dict (S, Back). */}}
+{{define "themeswitch"}}<form method="post" action="/my-tickets/theme" class="theme-switch">
+  <input type="hidden" name="csrf" value="{{.S.CSRF}}">
+  <input type="hidden" name="back" value="{{.Back}}">
+  <span class="theme-switch-label">Appearance</span>
+  <button type="submit" name="theme" value="toggle" class="btn btn-ghost btn-icon theme-toggle" title="Switch between light and dark" aria-label="Switch between light and dark">
+    <span class="light-only">{{template "icon" "moon"}}</span><span class="dark-only">{{template "icon" "sun"}}</span>
+  </button>
+</form>{{end}}
+
 {{/* orgswitch shows the current org; with several, a no-JS dropdown of POST forms switches it. */}}
 {{define "orgswitch"}}<div class="px-4 pb-2 md:px-3">
   {{if gt (len .Orgs) 1}}
@@ -109,10 +125,8 @@
 {{define "accesslabel"}}{{if eq .OrgAccess "manage"}}All tickets{{else if eq .OrgAccess "read"}}All tickets · read-only{{else if .CanCreate}}Your projects{{else}}Your projects · read-only{{end}}{{end}}
 
 {{define "brand"}}<a href="/my-tickets" class="flex items-center gap-2.5 text-foreground">
-  <picture>
-    <source srcset="/my-tickets/assets/logo-dark.png?v={{assetVersion}}" media="(prefers-color-scheme: dark)">
-    <img src="/my-tickets/assets/logo-light.svg?v={{assetVersion}}" alt="Encatch" class="h-6 w-auto" width="125" height="24">
-  </picture>
+  <img src="/my-tickets/assets/logo-light.svg?v={{assetVersion}}" alt="Encatch" class="light-only h-6 w-auto" width="125" height="24">
+  <img src="/my-tickets/assets/logo-dark.png?v={{assetVersion}}" alt="Encatch" class="dark-only h-6 w-auto" width="125" height="24">
   <span class="border-l pl-2.5 text-sm font-medium text-muted-foreground">Support</span>
 </a>{{end}}
 
@@ -143,6 +157,8 @@
 {{- else if eq . "logout"}}<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>
 {{- else if eq . "chevron"}}<path d="m9 18 6-6-6-6"/>
 {{- else if eq . "search"}}<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+{{- else if eq . "sun"}}<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>
+{{- else if eq . "moon"}}<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
 {{- else if eq . "x"}}<path d="M18 6 6 18"/><path d="m6 6 12 12"/>
 {{- else if eq . "arrow-left"}}<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>
 {{- else if eq . "arrow-right"}}<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>

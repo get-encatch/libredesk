@@ -24,10 +24,30 @@
     --sidebar: oklch(0.985 0.004 286);
     --radius: 0.625rem;
     --tracking-normal: -0.025em;
+    color-scheme: light; --light-only: block; --dark-only: none;
   }
-  /* Encatch design tokens (dark), following the system setting. */
+  /* Encatch design tokens (dark): when the visitor chose Dark, or follows a dark device.
+     The two blocks must stay identical (mytickets_test.go checks). */
+  :root[data-theme="dark"] {
+    --background: #09090b; --foreground: #f7f5ff;
+    --card: #18181b; --card-foreground: #f7f5ff;
+    --primary: #394dfe; --primary-foreground: #ffffff;
+    --secondary: #27272a; --secondary-foreground: #f4f4f5;
+    --muted: #27272a; --muted-foreground: #9aa4b8;
+    --accent: #27272a; --accent-foreground: #f4f4f5;
+    --destructive: oklch(0.7106 0.1661 22.2162); --destructive-foreground: oklch(1.0000 0 0);
+    --border: #27272a; --input: #3f3f46; --ring: #394dfe;
+    --sidebar: #18181b;
+    --badge-primary-bg: #1a2466; --badge-primary-text: #a5b4ff; --badge-primary-border: #2e3da8;
+    --badge-accent-bg: #2a2058; --badge-accent-text: #8b7cff; --badge-accent-border: #3d355e;
+    --badge-neutral-bg: #12102a; --badge-neutral-text: #9aa4b8; --badge-neutral-border: #272d3d;
+    --warning: oklch(94.5% 0.129 101.54 / 0); --warning-foreground: oklch(68.1% 0.162 75.834);
+    --success: oklch(0.7 0.15 155); --success-foreground: oklch(0.9219 0 0);
+    --info: oklch(29.32% 0.0658 242.91); --info-foreground: oklch(73.28% 0.146 229.96);
+    color-scheme: dark; --light-only: none; --dark-only: block;
+  }
   @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-theme="light"]) {
       --background: #09090b; --foreground: #f7f5ff;
       --card: #18181b; --card-foreground: #f7f5ff;
       --primary: #394dfe; --primary-foreground: #ffffff;
@@ -43,6 +63,7 @@
       --warning: oklch(94.5% 0.129 101.54 / 0); --warning-foreground: oklch(68.1% 0.162 75.834);
       --success: oklch(0.7 0.15 155); --success-foreground: oklch(0.9219 0 0);
       --info: oklch(29.32% 0.0658 242.91); --info-foreground: oklch(73.28% 0.146 229.96);
+      color-scheme: dark; --light-only: none; --dark-only: block;
     }
   }
   html { scrollbar-gutter: stable; }
@@ -52,6 +73,16 @@
 }
 
 @layer components {
+  /* Shown only in the light or the dark theme (tokens above): logos, the toggle's icon. */
+  .light-only { display: var(--light-only); }
+  .dark-only { display: var(--dark-only); }
+
+  /* Appearance toggle, above the user bar (end of the menu on phones). */
+  .theme-switch { @apply flex items-center justify-between gap-2 px-4 py-1.5; }
+  .theme-switch-label { @apply text-xs font-medium text-muted-foreground; }
+  .theme-toggle { @apply h-8 w-8 text-muted-foreground hover:text-foreground; }
+  .theme-toggle .icon { @apply h-4 w-4; }
+
   /* Button (buttonVariants) */
   .btn { @apply inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 h-9 px-4 py-2; }
   .btn-default { @apply bg-primary text-primary-foreground hover:opacity-90; }

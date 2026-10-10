@@ -30,21 +30,23 @@ import (
 var templateFS embed.FS
 
 // static/ holds app.css (built from ui/ with Encatch's design tokens; run
-// ui/build.sh after changing templates) and the Encatch logos.
+// ui/build.sh after changing templates), the Encatch logos and theme.js (the light/dark
+// switch without a reload; the pages work without it).
 //
-//go:embed static/app.css static/logo-light.svg static/logo-dark.png
+//go:embed static/app.css static/logo-light.svg static/logo-dark.png static/theme.js
 var staticFS embed.FS
 
 var assetTypes = map[string]string{
 	"app.css":        "text/css; charset=utf-8",
 	"logo-light.svg": "image/svg+xml",
 	"logo-dark.png":  "image/png",
+	"theme.js":       "text/javascript; charset=utf-8",
 }
 
 // assetVersion busts browser caches when any asset changes.
 var assetVersion = func() string {
 	h := sha256.New()
-	for _, name := range []string{"app.css", "logo-light.svg", "logo-dark.png"} {
+	for _, name := range []string{"app.css", "logo-light.svg", "logo-dark.png", "theme.js"} {
 		b, _ := staticFS.ReadFile("static/" + name)
 		h.Write(b)
 	}
@@ -52,7 +54,10 @@ var assetVersion = func() string {
 }()
 
 const (
-	cookieName     = "libredesk_my_tickets"
+	cookieName = "libredesk_my_tickets"
+	// The visitor's light/dark choice ("light" or "dark"; absent = follow the device).
+	// Not HttpOnly: theme.js sets it too. Holds nothing sensitive.
+	themeCookie    = "libredesk_my_tickets_theme"
 	basePath       = "/my-tickets"
 	maxSubjectLen  = 200
 	maxMessageLen  = 20000
@@ -514,6 +519,59 @@ func (s *Service) Asset(r *fastglue.Request) error {
 	return nil
 }
 
+// themeOf returns the visitor's saved theme: "light", "dark", or "" (follow the device).
+func themeOf(r *fastglue.Request) string {
+	switch t := string(r.RequestCtx.Request.Header.Cookie(themeCookie)); t {
+	case "light", "dark":
+		return t
+	}
+	return ""
+}
+
+// safeBack keeps a return path inside My Tickets.
+func safeBack(path string) string {
+	if path == basePath || (strings.HasPrefix(path, basePath+"/") || strings.HasPrefix(path, basePath+"?")) &&
+		!strings.ContainsAny(path, "\\\r\n") {
+		return path
+	}
+	return basePath
+}
+
+// Theme saves the light/dark choice ("light", "dark", "system", or "toggle" from the
+// toggle's form) and returns to the page it came from. theme.js does this without a reload.
+func (s *Service) Theme(r *fastglue.Request) error {
+	back := safeBack(string(r.RequestCtx.FormValue("back")))
+	sess, ok := s.session(r)
+	if !ok || !CSRFValid(sess, string(r.RequestCtx.FormValue("csrf"))) {
+		return s.redirect(r, back)
+	}
+	c := fasthttp.AcquireCookie()
+	defer fasthttp.ReleaseCookie(c)
+	c.SetKey(themeCookie)
+	c.SetPath(basePath)
+	c.SetSecure(true)
+	c.SetSameSite(fasthttp.CookieSameSiteLaxMode)
+	theme := string(r.RequestCtx.FormValue("theme"))
+	if theme == "toggle" {
+		// Without theme.js the server can't see the device's setting: flip between
+		// following the device (assumed light) and dark.
+		if themeOf(r) == "" {
+			theme = "dark"
+		} else {
+			theme = "system"
+		}
+	}
+	switch theme {
+	case "light", "dark":
+		c.SetValue(theme)
+		c.SetMaxAge(365 * 24 * 60 * 60)
+	default: // "system": follow the device again
+		c.SetExpire(fasthttp.CookieExpireDelete)
+	}
+	r.RequestCtx.Response.Header.SetCookie(c)
+	return s.redirect(r, back)
+}
+
 // SwitchOrg makes another of the session's orgs current.
 func (s *Service) SwitchOrg(r *fastglue.Request) error {
 	sid := string(r.RequestCtx.Request.Header.Cookie(cookieName))
@@ -731,6 +789,15 @@ func (s *Service) renderError(r *fastglue.Request, code int, text string) error 
 }
 
 func (s *Service) render(r *fastglue.Request, code int, name string, data map[string]any) error {
+	if data == nil {
+		data = map[string]any{}
+	}
+	// Every page: the saved theme, and where the theme switch returns to.
+	data["Theme"] = themeOf(r)
+	data["Back"] = basePath
+	if r.RequestCtx.IsGet() {
+		data["Back"] = safeBack(string(r.RequestCtx.RequestURI()))
+	}
 	var buf bytes.Buffer
 	if err := s.tmpl.ExecuteTemplate(&buf, name, data); err != nil {
 		s.lo.Error("my-tickets: rendering", "template", name, "error", err)

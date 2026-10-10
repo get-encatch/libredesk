@@ -1,6 +1,7 @@
 // encatch: Tailwind build for the My Tickets pages: shadcn component styles with
 // Encatch's design tokens (see app.css), not libredesk's agent-app theme.
-// Dark mode follows the visitor's system setting (no JavaScript on these pages).
+// Dark mode is CSS tokens in app.css: the visitor's choice (data-theme on <html>, from a
+// cookie) or else the device setting. No dark: utilities are used.
 // Rebuild after changing templates: ./build.sh
 const v = (name) => `var(--${name})`
 
