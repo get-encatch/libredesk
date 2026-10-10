@@ -310,6 +310,9 @@ type Backend interface {
 	// RegisterOrg records that an org used My Tickets (keeping its name current) and
 	// returns its support tier, which the helpdesk owns (see internal/encatch/orgtiers).
 	RegisterOrg(instance, orgID, orgName string) (string, error)
+	// SyncNames brings the org and project names stored on an org's tickets up to date
+	// with the sign-in's (ids instance-prefixed), so renames in Encatch reach old tickets.
+	SyncNames(org Org) error
 	// LatestTicketOrg returns which of orgIDs the contact's most recent ticket belongs to
 	// ("" if none), to open My Tickets there.
 	LatestTicketOrg(contactID int, orgIDs []string) (string, error)

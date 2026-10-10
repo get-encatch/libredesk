@@ -170,6 +170,9 @@ func (s *Service) Login(r *fastglue.Request) error {
 		if _, err := s.backend.RegisterOrg(sess.Instance, string(o.ID), o.Name); err != nil {
 			s.lo.Error("my-tickets: registering org", "org", o.ID, "error", err)
 		}
+		if err := s.backend.SyncNames(o); err != nil {
+			s.lo.Error("my-tickets: updating renamed org or project names on tickets", "org", o.ID, "error", err)
+		}
 	}
 	current, err := s.backend.LatestTicketOrg(contactID, orgIDs)
 	if err != nil {
@@ -240,6 +243,7 @@ func (s *Service) loadList(r *fastglue.Request, sess Session) (map[string]any, e
 	}
 	rows := make([]inboxRow, 0, len(tickets))
 	for _, t := range tickets {
+		t = withCurrentNames(sess, t)
 		rows = append(rows, inboxRow{t, CustomerStatus(t.InternalStatus), sender(sess, t)})
 	}
 	// Ticket links carry the filters and page so the list stays the same while reading.
@@ -321,6 +325,7 @@ func (s *Service) renderTicket(r *fastglue.Request, sess Session, t TicketSummar
 	for _, m := range msgs {
 		view = append(view, viewMsg{m, template.HTML(s.sanitize.Sanitize(m.HTML))}) // #nosec G203: sanitised above
 	}
+	t = withCurrentNames(sess, t)
 	data["T"] = t
 	data["TicketStatus"] = CustomerStatus(t.InternalStatus)
 	data["Messages"] = view
@@ -569,6 +574,15 @@ func (s *Service) session(r *fastglue.Request) (Session, bool) {
 // another of the session's orgs (a link opened while a different org was selected)
 // switches the session to that org, if the user's access there shows it. Anything
 // else is "not found", whether or not the ticket exists.
+// withCurrentNames shows the project's current name from the sign-in, rather than the
+// name stored on the ticket when it was raised (SyncNames catches the stored one up).
+func withCurrentNames(sess Session, t TicketSummary) TicketSummary {
+	if name, ok := sess.ProjectName(t.ProjectID); ok && t.ProjectID != "" {
+		t.ProjectName = name
+	}
+	return t
+}
+
 func (s *Service) visibleTicket(r *fastglue.Request, sess *Session) (TicketSummary, bool) {
 	ref, _ := r.RequestCtx.UserValue("ref").(string)
 	if ref == "" || len(ref) > 64 {

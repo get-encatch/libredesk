@@ -83,6 +83,34 @@ func (b *LibredeskBackend) RegisterOrg(instance, orgID, orgName string) (string,
 	return b.OrgTiers.Seen(instance, orgID, orgName)
 }
 
+// SyncNames rewrites org_name and project_name on the org's tickets where they differ from
+// the current names. Only renamed tickets are written; the org lookup uses the
+// encatch_conversations_org_activity index. Display names only: no activity or webhook.
+func (b *LibredeskBackend) SyncNames(org Org) error {
+	if _, err := b.DB.Exec(`UPDATE conversations
+		SET custom_attributes = jsonb_set(custom_attributes, '{org_name}', to_jsonb($2::text))
+		WHERE custom_attributes->>'org_id' = $1 AND custom_attributes->>'org_name' IS DISTINCT FROM $2`,
+		string(org.ID), org.Name); err != nil {
+		return fmt.Errorf("updating org name: %w", err)
+	}
+	if len(org.Projects) == 0 {
+		return nil
+	}
+	ids, names := make([]string, 0, len(org.Projects)), make([]string, 0, len(org.Projects))
+	for _, p := range org.Projects {
+		ids, names = append(ids, string(p.ID)), append(names, p.Name)
+	}
+	if _, err := b.DB.Exec(`UPDATE conversations c
+		SET custom_attributes = jsonb_set(c.custom_attributes, '{project_name}', to_jsonb(p.name))
+		FROM unnest($2::text[], $3::text[]) AS p(id, name)
+		WHERE c.custom_attributes->>'org_id' = $1 AND c.custom_attributes->>'project_id' = p.id
+		  AND c.custom_attributes->>'project_name' IS DISTINCT FROM p.name`,
+		string(org.ID), pq.Array(ids), pq.Array(names)); err != nil {
+		return fmt.Errorf("updating project names: %w", err)
+	}
+	return nil
+}
+
 func (b *LibredeskBackend) LatestTicketOrg(contactID int, orgIDs []string) (string, error) {
 	var org string
 	err := b.DB.Get(&org, `SELECT c.custom_attributes->>'org_id' FROM conversations c

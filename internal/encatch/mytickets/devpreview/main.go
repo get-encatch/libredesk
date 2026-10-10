@@ -334,6 +334,9 @@ func (b *sampleBackend) GetTicket(ref string) (mytickets.TicketSummary, error) {
 	return *t, nil
 }
 
+// SyncNames: the preview keeps the names its sample tickets were made with.
+func (b *sampleBackend) SyncNames(mytickets.Org) error { return nil }
+
 func (b *sampleBackend) Messages(uuid string, page, perPage int) ([]mytickets.Message, int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()

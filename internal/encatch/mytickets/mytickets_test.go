@@ -216,6 +216,7 @@ type fakeBackend struct {
 	tickets  map[string]TicketSummary
 	attrs    map[string]map[string]any
 	tags     map[string][]string
+	synced   []Org
 	msgs     map[string][]Message
 	files    []Upload
 	tiers    map[string]string // org -> tier set by an admin
@@ -277,6 +278,23 @@ func (f *fakeBackend) ListTickets(q ListQuery) ([]TicketSummary, error) {
 		out = out[:q.Limit]
 	}
 	return out, nil
+}
+func (f *fakeBackend) SyncNames(org Org) error {
+	f.synced = append(f.synced, org)
+	names := map[string]string{}
+	for _, p := range org.Projects {
+		names[string(p.ID)] = p.Name
+	}
+	for ref, t := range f.tickets {
+		if t.OrgID != string(org.ID) {
+			continue
+		}
+		if n, ok := names[t.ProjectID]; ok {
+			t.ProjectName = n
+		}
+		f.tickets[ref] = t
+	}
+	return nil
 }
 func (f *fakeBackend) GetTicket(ref string) (TicketSummary, error) {
 	t, ok := f.tickets[ref]
@@ -1058,5 +1076,36 @@ func TestMessagePaging(t *testing.T) {
 	}
 	if got := PageMessages(h.be.msgs["u500"], 3, 10); len(got) != 5 || got[0].HTML != "<p>Message number 1.</p>" {
 		t.Fatalf("PageMessages oldest page = %d messages", len(got))
+	}
+}
+
+func TestRenames(t *testing.T) {
+	h := newHarness(t)
+	now := time.Now()
+	h.be.tickets["600"] = TicketSummary{UUID: "u600", ReferenceNumber: "600", ContactID: 50, OrgID: "prod-42",
+		ProjectID: "prod-17", ProjectName: "Mobile app", Subject: "Old ticket", InternalStatus: "Open", CreatedAt: now}
+	h.be.msgs["u600"] = []Message{{FromCustomer: true, HTML: "x"}}
+
+	// BigCorp and its project were renamed in Encatch since the ticket was raised.
+	sid, _ := h.signIn([]map[string]any{{"id": 42, "name": "BigCorp Group", "access": "manage",
+		"projects": []map[string]any{{"id": 17, "name": "Mobile App (iOS)", "access": "manage"}}}})
+	if len(h.be.synced) != 1 || h.be.synced[0].ID != "prod-42" || h.be.synced[0].Name != "BigCorp Group" ||
+		len(h.be.synced[0].Projects) != 1 || h.be.synced[0].Projects[0].ID != "prod-17" || h.be.synced[0].Projects[0].Name != "Mobile App (iOS)" {
+		t.Fatalf("sign-in didn't pass the current names on for syncing: %+v", h.be.synced)
+	}
+
+	// Even with a stale stored name, My Tickets shows the current one.
+	tk := h.be.tickets["600"]
+	tk.ProjectName = "Mobile app"
+	h.be.tickets["600"] = tk
+	list := string(h.do(h.svc.List, "GET", "/my-tickets", sid, "", nil).Body())
+	view := string(h.do(h.svc.View, "GET", "/my-tickets/600", sid, "", map[string]string{"ref": "600"}).Body())
+	for name, body := range map[string]string{"list": list, "ticket": view} {
+		if !strings.Contains(body, "Mobile App (iOS)") || strings.Contains(body, ">Mobile app<") {
+			t.Errorf("%s shows a stale project name", name)
+		}
+	}
+	if !strings.Contains(view, "BigCorp Group") {
+		t.Error("ticket page doesn't show the current org name")
 	}
 }
