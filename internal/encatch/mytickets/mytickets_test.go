@@ -363,3 +363,18 @@ func TestAsset(t *testing.T) {
 		}
 	}
 }
+
+func TestInitials(t *testing.T) {
+	for _, c := range []struct{ name, email, want string }{
+		{"Anita Rao", "a@x.com", "AR"},
+		{"ravi", "r@x.com", "R"},
+		{"Anne Marie Smith", "", "AM"},
+		{"", "meera@x.com", "M"},
+		{"  ", "", ""},
+		{"élodie durand", "", "ÉD"},
+	} {
+		if got := initials(c.name, c.email); got != c.want {
+			t.Errorf("initials(%q, %q) = %q, want %q", c.name, c.email, got, c.want)
+		}
+	}
+}

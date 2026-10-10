@@ -1,3 +1,5 @@
+{{/* head takes a dict: Title, S (session, nil when signed out), and on the list
+     page Nav "list" plus the current Status and Project filters. */}}
 {{define "head"}}<!doctype html>
 <html lang="en">
 <head>
@@ -10,27 +12,88 @@
 <link rel="stylesheet" href="/my-tickets/assets/app.css?v={{assetVersion}}">
 </head>
 <body class="min-h-screen">
-<header class="sticky top-0 z-10 border-b bg-background">
-  <div class="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-    <a href="/my-tickets" class="flex items-center gap-2.5 text-foreground">
-      <picture>
-        <source srcset="/my-tickets/assets/logo-dark.png?v={{assetVersion}}" media="(prefers-color-scheme: dark)">
-        <img src="/my-tickets/assets/logo-light.svg?v={{assetVersion}}" alt="Encatch" class="h-6 w-auto" width="125" height="24">
-      </picture>
-      <span class="border-l pl-2.5 text-sm font-medium text-muted-foreground">Support</span>
-    </a>
-    {{with .S}}<div class="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-      <span>{{.Name}} · {{.OrgName}}</span>
-      <form method="post" action="/my-tickets/logout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="btn btn-outline btn-sm" type="submit">Sign out</button></form>
-    </div>{{end}}
+{{if .S}}{{$list := eq (or .Nav "") "list"}}{{$st := or .Status ""}}{{$p := or .Project ""}}
+<aside class="sidebar">
+  <div class="flex items-center justify-between gap-2 px-4 py-3 md:px-4 md:pb-2 md:pt-4">
+    {{template "brand"}}
+    <div class="flex items-center gap-1 md:hidden">
+      <a class="btn btn-default btn-sm" href="/my-tickets/new">{{template "icon" "plus"}}New</a>
+      {{template "signout" .S}}
+    </div>
   </div>
+  <div class="hidden px-3 pb-2 pt-2 md:block">
+    <a class="btn btn-default w-full" href="/my-tickets/new">{{template "icon" "plus"}}New ticket</a>
+  </div>
+  <nav class="sidebar-nav" aria-label="Tickets">
+    <div class="sidebar-group">
+      <p class="sidebar-label">Tickets</p>
+      <ul class="sidebar-menu">
+        <li><a class="sidebar-item {{if and $list (not $st)}}sidebar-item-active{{end}}" href="/my-tickets{{if $p}}?project={{$p}}{{end}}">{{template "icon" "inbox"}}All tickets</a></li>
+        <li><a class="sidebar-item {{if and $list (eq $st "Open")}}sidebar-item-active{{end}}" href="/my-tickets?status=Open{{if $p}}&amp;project={{$p}}{{end}}">{{template "icon" "open"}}Open</a></li>
+        <li><a class="sidebar-item {{if and $list (eq $st "Waiting on you")}}sidebar-item-active{{end}}" href="/my-tickets?status=Waiting+on+you{{if $p}}&amp;project={{$p}}{{end}}">{{template "icon" "waiting"}}Waiting on you</a></li>
+        <li><a class="sidebar-item {{if and $list (eq $st "Resolved")}}sidebar-item-active{{end}}" href="/my-tickets?status=Resolved{{if $p}}&amp;project={{$p}}{{end}}">{{template "icon" "resolved"}}Resolved</a></li>
+      </ul>
+    </div>
+    {{if .S.Projects}}
+    <div class="sidebar-group">
+      <p class="sidebar-label">Projects</p>
+      <ul class="sidebar-menu">
+        {{range .S.Projects}}{{$on := and $list (eq (print .ID) $p)}}
+        <li><a class="sidebar-item {{if $on}}sidebar-item-active{{end}}" {{if $on}}aria-current="true" title="Show all projects"{{end}} href="/my-tickets{{if $on}}{{if $st}}?status={{$st}}{{end}}{{else}}?{{if $st}}status={{$st}}&amp;{{end}}project={{.ID}}{{end}}">{{template "icon" "folder"}}<span class="truncate">{{.Name}}</span></a></li>
+        {{end}}
+      </ul>
+    </div>
+    {{end}}
+  </nav>
+  <div class="hidden items-center gap-3 border-t px-4 py-3 md:flex">
+    <span class="avatar" aria-hidden="true">{{initials .S.Name .S.Email}}</span>
+    <div class="min-w-0 flex-1 leading-tight">
+      <p class="truncate text-sm font-medium">{{or .S.Name .S.Email}}</p>
+      <p class="truncate text-xs text-muted-foreground">{{.S.OrgName}}</p>
+    </div>
+    {{template "signout" .S}}
+  </div>
+</aside>
+<div class="md:pl-64">
+<main class="mx-auto max-w-3xl px-4 pb-16 pt-6 md:px-8 md:pt-10">
+{{else}}
+<header class="border-b">
+  <div class="mx-auto flex max-w-3xl items-center px-4 py-3">{{template "brand"}}</div>
 </header>
+<div>
 <main class="mx-auto max-w-3xl px-4 pb-16 pt-8">
+{{end}}
 {{end}}
 
 {{define "foot"}}</main>
+</div>
 </body>
 </html>
 {{end}}
 
+{{define "brand"}}<a href="/my-tickets" class="flex items-center gap-2.5 text-foreground">
+  <picture>
+    <source srcset="/my-tickets/assets/logo-dark.png?v={{assetVersion}}" media="(prefers-color-scheme: dark)">
+    <img src="/my-tickets/assets/logo-light.svg?v={{assetVersion}}" alt="Encatch" class="h-6 w-auto" width="125" height="24">
+  </picture>
+  <span class="border-l pl-2.5 text-sm font-medium text-muted-foreground">Support</span>
+</a>{{end}}
+
+{{define "signout"}}<form method="post" action="/my-tickets/logout">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <button class="btn btn-ghost btn-icon" type="submit" title="Sign out" aria-label="Sign out">{{template "icon" "logout"}}</button>
+</form>{{end}}
+
 {{define "status"}}<span class="badge {{if eq . "Waiting on you"}}badge-waiting{{else if eq . "Resolved"}}badge-resolved{{else}}badge-open{{end}}">{{.}}</span>{{end}}
+
+{{/* Lucide icons (ISC licence), inlined so the pages need no extra requests. */}}
+{{define "icon"}}<svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+{{- if eq . "inbox"}}<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>
+{{- else if eq . "open"}}<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="1"/>
+{{- else if eq . "waiting"}}<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+{{- else if eq . "resolved"}}<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>
+{{- else if eq . "folder"}}<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>
+{{- else if eq . "plus"}}<path d="M5 12h14"/><path d="M12 5v14"/>
+{{- else if eq . "logout"}}<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>
+{{- else if eq . "chevron"}}<path d="m9 18 6-6-6-6"/>
+{{- end}}</svg>{{end}}

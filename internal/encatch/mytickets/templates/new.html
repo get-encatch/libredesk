@@ -1,5 +1,5 @@
 {{define "new.html"}}{{template "head" (dict "Title" "New ticket" "S" .S)}}
-<a href="/my-tickets" class="btn btn-ghost btn-sm -ml-3 mb-2 text-muted-foreground">&larr; All tickets</a>
+<nav class="breadcrumb" aria-label="Breadcrumb"><a href="/my-tickets">Tickets</a>{{template "icon" "chevron"}}<span aria-current="page">New ticket</span></nav>
 <div class="mb-6 space-y-1">
   <h1 class="text-2xl font-semibold tracking-tight">New ticket</h1>
   <p class="text-sm text-muted-foreground">For {{.S.OrgName}}. We'll reply here and by email to {{.S.Email}}.</p>

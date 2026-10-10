@@ -12,6 +12,7 @@ import (
 	"html/template"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/microcosm-cc/bluemonday"
 	"github.com/valyala/fasthttp"
@@ -85,8 +86,9 @@ func New(o Opts) (*Service, error) {
 			}
 			return m
 		},
-		"date":       func(t time.Time) string { return t.In(ist).Format("2 Jan 2006, 15:04") },
+		"date":         func(t time.Time) string { return t.In(ist).Format("2 Jan 2006, 15:04") },
 		"assetVersion": func() string { return assetVersion },
+		"initials":     initials,
 	}
 	tmpl, err := template.New("").Funcs(funcs).ParseFS(templateFS, "templates/*.html")
 	if err != nil {
@@ -177,7 +179,8 @@ func (s *Service) List(r *fastglue.Request) error {
 	if status != StatusOpen && status != StatusWaitingYou && status != StatusResolved {
 		status = ""
 	}
-	if _, ok := sess.ProjectName(project); !ok {
+	projectName, ok := sess.ProjectName(project)
+	if !ok {
 		project = ""
 	}
 	tickets, err := s.backend.ListTickets(ListQuery{
@@ -197,8 +200,7 @@ func (s *Service) List(r *fastglue.Request) error {
 		rows = append(rows, row{t, CustomerStatus(t.InternalStatus)})
 	}
 	return s.render(r, fasthttp.StatusOK, "list.html", map[string]any{
-		"S": sess, "Tickets": rows, "Status": status, "Project": project,
-		"Statuses":     []string{StatusOpen, StatusWaitingYou, StatusResolved},
+		"S": sess, "Tickets": rows, "Status": status, "Project": project, "ProjectName": projectName,
 		"ShowRaisedBy": sess.Scope != ScopeSelf, "ShowProject": len(sess.Projects) > 0,
 	})
 }
@@ -453,6 +455,25 @@ func textToHTML(text string) string {
 }
 
 // splitName splits a display name, falling back to the email's local part.
+// initials returns up to two letters for the sidebar avatar.
+func initials(name, email string) string {
+	words := strings.Fields(name)
+	if len(words) == 0 {
+		words = []string{email}
+	}
+	var out []rune
+	for _, w := range words {
+		for _, r := range w {
+			out = append(out, unicode.ToUpper(r))
+			break
+		}
+		if len(out) == 2 {
+			break
+		}
+	}
+	return string(out)
+}
+
 func splitName(name, email string) (string, string) {
 	name = strings.TrimSpace(name)
 	if name == "" {

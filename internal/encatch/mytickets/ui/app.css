@@ -21,6 +21,7 @@
     --warning: oklch(94.5% 0.129 101.54 / 0.2); --warning-foreground: oklch(68.1% 0.162 75.834);
     --success: oklch(0.65 0.2 150); --success-foreground: oklch(0.3211 0 0);
     --info: oklch(97.71% 0.0125 236.62); --info-foreground: oklch(59.87% 0.1497 244.76);
+    --sidebar: oklch(0.985 0.004 286);
     --radius: 0.625rem;
     --tracking-normal: -0.025em;
   }
@@ -35,6 +36,7 @@
       --accent: #27272a; --accent-foreground: #f4f4f5;
       --destructive: oklch(0.7106 0.1661 22.2162); --destructive-foreground: oklch(1.0000 0 0);
       --border: #27272a; --input: #3f3f46; --ring: #394dfe;
+      --sidebar: #18181b;
       --badge-primary-bg: #1a2466; --badge-primary-text: #a5b4ff; --badge-primary-border: #2e3da8;
       --badge-accent-bg: #2a2058; --badge-accent-text: #8b7cff; --badge-accent-border: #3d355e;
       --badge-neutral-bg: #12102a; --badge-neutral-text: #9aa4b8; --badge-neutral-border: #272d3d;
@@ -85,4 +87,19 @@
   .message-body ul { @apply my-2 list-disc pl-5; }
   .message-body ol { @apply my-2 list-decimal pl-5; }
   .message-body pre { @apply my-2 overflow-x-auto rounded-md bg-muted p-3 text-xs; }
+  /* Sidebar (shadcn sidebar block). Below md it becomes a top bar with a scrolling nav. */
+  .sidebar { @apply border-b bg-sidebar md:fixed md:inset-y-0 md:left-0 md:z-20 md:flex md:w-64 md:flex-col md:border-b-0 md:border-r; }
+  .sidebar-nav { @apply flex gap-1 overflow-x-auto px-4 pb-3 md:block md:flex-1 md:overflow-y-auto md:px-3 md:pb-4; }
+  .sidebar-group { @apply flex md:block; }
+  .sidebar-label { @apply hidden px-2 pb-1 pt-4 text-xs font-medium text-muted-foreground md:block; }
+  .sidebar-menu { @apply flex gap-1 md:flex-col; }
+  .sidebar-item { @apply flex h-8 items-center gap-2 whitespace-nowrap rounded-md px-2 text-sm text-foreground transition-colors hover:bg-accent hover:text-accent-foreground; }
+  .sidebar-item-active { @apply bg-accent font-medium text-accent-foreground; }
+  .avatar { @apply flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-xs font-semibold text-primary-foreground; }
+  .icon { @apply h-4 w-4 shrink-0; }
+  .btn-icon { @apply h-8 w-8 p-0 text-muted-foreground hover:text-foreground; }
+  .breadcrumb { @apply mb-3 flex items-center gap-1.5 text-sm text-muted-foreground; }
+  .breadcrumb a { @apply transition-colors hover:text-foreground; }
+  .breadcrumb .icon { @apply h-3.5 w-3.5; }
+  .breadcrumb [aria-current] { @apply text-foreground; }
 }

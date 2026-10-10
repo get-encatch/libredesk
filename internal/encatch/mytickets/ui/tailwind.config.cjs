@@ -22,6 +22,7 @@ module.exports = {
         muted: { DEFAULT: v('muted'), foreground: v('muted-foreground') },
         accent: { DEFAULT: v('accent'), foreground: v('accent-foreground') },
         card: { DEFAULT: v('card'), foreground: v('card-foreground') },
+        sidebar: v('sidebar'),
         'badge-primary': { bg: v('badge-primary-bg'), text: v('badge-primary-text'), border: v('badge-primary-border') },
         'badge-accent': { bg: v('badge-accent-bg'), text: v('badge-accent-text'), border: v('badge-accent-border') },
         'badge-neutral': { bg: v('badge-neutral-bg'), text: v('badge-neutral-text'), border: v('badge-neutral-border') },

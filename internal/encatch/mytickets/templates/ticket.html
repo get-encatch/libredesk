@@ -1,5 +1,5 @@
 {{define "ticket.html"}}{{template "head" (dict "Title" .T.Subject "S" .S)}}
-<a href="/my-tickets" class="btn btn-ghost btn-sm -ml-3 mb-2 text-muted-foreground">&larr; All tickets</a>
+<nav class="breadcrumb" aria-label="Breadcrumb"><a href="/my-tickets">Tickets</a>{{template "icon" "chevron"}}<span aria-current="page">#{{.T.ReferenceNumber}}</span></nav>
 <div class="mb-1 flex flex-wrap items-start justify-between gap-3">
   <h1 class="text-2xl font-semibold tracking-tight [overflow-wrap:anywhere]">{{.T.Subject}}</h1>
   {{template "status" .Status}}
