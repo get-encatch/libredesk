@@ -39,6 +39,13 @@ This repo is **get-encatch/libredesk**, the Encatch (CMSS) fork of [abhinavxd/li
 - Deploys need no SSH: after the build, `.github/workflows/encatch-deploy.yml` waits for approval on the GitHub `production` environment (reviewer: godwinpinto; branch policy `encatch/main`), then records a GitHub deployment. The server's deploy agent (`deploy/agent/deploy_agent.py`, systemd `encatch-deploy.timer`, every 2 min) pulls it from the public API, deploys with backup + health check + automatic rollback, and reports via `/.well-known/encatch-deploy.json` on the desk domain. On success the workflow publishes the tag's draft GitHub Release (Latest only if it's the newest version). Runbook: `deploy/README.md` > Deploys. Agent tests: `python3 -m unittest deploy/agent/test_deploy_agent.py`.
 - Our edits to `.goreleaser.yaml` and `release.yml` are marked `# encatch:`. Expect small conflicts there when merging upstream releases, and keep our version (GHCR only, `get-encatch` owner).
 
+## GitHub repository security (set 2026-10-10)
+
+- Rulesets: "Protect branches" (no force-push or deletion of `encatch/main`, `main`, `release/*`, no bypass); "Release tags: immutable" (`v*` tags can't be moved or deleted by anyone); "Release tags: who can create" (only org admins create `v*` tags). Syncing upstream tags into the fork therefore needs an org admin.
+- Production environment: reviewer godwinpinto only, branch `encatch/main` only, admins can't bypass.
+- Actions: approval required for all outside contributors' workflows; only GitHub-owned, verified, and the listed actions (goreleaser, docker, crowdin) may run. A new third-party action must be added under Settings > Actions first.
+- Secret scanning with push protection, Dependabot alerts and security updates, and private vulnerability reporting are on. Our policy is `.github/SECURITY.md` (GitHub shows it before upstream's root `SECURITY.md`, which stays untouched). Upstream's PR-welcome workflow is disabled in GitHub (not edited).
+
 ## Production deployment
 
 - `deploy/` holds our production stack (server `ubuntu@103.205.140.125`, installed in `/srv/libredesk`). Two domains: **desk.encatch.com** for agents (full app, libredesk Root URL) and **support.encatch.com** for customers (Caddy allowlist of customer paths; everything else shows a static page). New customer-facing features must be added to the support allowlist in `deploy/Caddyfile`. `deploy/README.md` is the runbook: install/update, backups, restore.
