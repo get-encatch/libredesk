@@ -1138,6 +1138,28 @@ func TestTheme(t *testing.T) {
 	if got, _ := themeCookieOf(post("csrf=" + sess.CSRF + "&theme=system")); !strings.HasPrefix(got, "|/my-tickets|false") {
 		t.Fatalf("system should delete the cookie, got %q", got)
 	}
+	// The toggle's form without theme.js: following the device -> dark -> following again.
+	toggle := func(current string) string {
+		ctx := &fasthttp.RequestCtx{}
+		ctx.Request.Header.SetMethod("POST")
+		ctx.Request.SetRequestURI("/my-tickets/theme")
+		ctx.Request.Header.SetCookie(cookieName, sid)
+		if current != "" {
+			ctx.Request.Header.SetCookie(themeCookie, current)
+		}
+		ctx.Request.Header.SetContentType("application/x-www-form-urlencoded")
+		ctx.Request.SetBodyString("csrf=" + sess.CSRF + "&theme=toggle")
+		if err := h.svc.Theme(&fastglue.Request{RequestCtx: ctx}); err != nil {
+			t.Fatal(err)
+		}
+		resp := &fasthttp.Response{}
+		ctx.Response.CopyTo(resp)
+		got, _ := themeCookieOf(resp)
+		return strings.SplitN(got, "|", 2)[0]
+	}
+	if toggle("") != "dark" || toggle("dark") != "" || toggle("light") != "" {
+		t.Fatalf("toggle cycle: none->%q dark->%q light->%q", toggle(""), toggle("dark"), toggle("light"))
+	}
 	if _, ok := themeCookieOf(post("csrf=wrong&theme=dark")); ok {
 		t.Fatal("theme saved without a valid csrf token")
 	}
@@ -1163,14 +1185,14 @@ func TestTheme(t *testing.T) {
 		return string(ctx.Response.Body())
 	}
 	dark := page("dark")
-	if !strings.Contains(dark, `<html lang="en" data-theme="dark">`) || !strings.Contains(dark, `value="dark" title="Dark" aria-label="Dark" aria-pressed="true"`) {
-		t.Fatal("dark page: no data-theme or the switch doesn't show Dark")
+	if !strings.Contains(dark, `<html lang="en" data-theme="dark">`) || !strings.Contains(dark, `name="theme" value="toggle"`) {
+		t.Fatal("dark page: no data-theme or no toggle")
 	}
 	if !strings.Contains(dark, `name="back" value="/my-tickets?status=Open"`) || !strings.Contains(dark, "/my-tickets/assets/theme.js?v=") {
 		t.Fatal("page lacks the return path or theme.js")
 	}
 	system := page("")
-	if strings.Contains(system, "data-theme=") || !strings.Contains(system, `value="system" title="Match my device" aria-label="Match my device" aria-pressed="true"`) {
+	if strings.Contains(system, "data-theme=") {
 		t.Fatal("no cookie should follow the device")
 	}
 	if junk := page("purple"); strings.Contains(junk, "data-theme=") {

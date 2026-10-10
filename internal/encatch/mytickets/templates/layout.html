@@ -84,19 +84,17 @@
 {{end}}
 {{end}}
 
-{{/* Light/dark switch: a form that saves the choice in a cookie; theme.js does it
-     without a reload. Shown above the user bar on wide screens and at the end of the
-     menu on phones. Takes the navmenu dict (S, Theme, Back). */}}
-{{define "themeswitch"}}{{$t := or .Theme "system"}}
-<form method="post" action="/my-tickets/theme" class="theme-switch" aria-label="Appearance">
+{{/* Light/dark toggle: one button that flips the page to the other theme. Matching the
+     device again clears the saved choice, so the page simply follows the device; theme.js
+     does this without a reload. Shown above the user bar on wide screens and at the end
+     of the menu on phones. Takes the navmenu dict (S, Back). */}}
+{{define "themeswitch"}}<form method="post" action="/my-tickets/theme" class="theme-switch">
   <input type="hidden" name="csrf" value="{{.S.CSRF}}">
   <input type="hidden" name="back" value="{{.Back}}">
   <span class="theme-switch-label">Appearance</span>
-  <span class="theme-switch-options">
-    <button type="submit" name="theme" value="system" title="Match my device" aria-label="Match my device" aria-pressed="{{eq $t "system"}}">{{template "icon" "monitor"}}</button>
-    <button type="submit" name="theme" value="light" title="Light" aria-label="Light" aria-pressed="{{eq $t "light"}}">{{template "icon" "sun"}}</button>
-    <button type="submit" name="theme" value="dark" title="Dark" aria-label="Dark" aria-pressed="{{eq $t "dark"}}">{{template "icon" "moon"}}</button>
-  </span>
+  <button type="submit" name="theme" value="toggle" class="btn btn-ghost btn-icon theme-toggle" title="Switch between light and dark" aria-label="Switch between light and dark">
+    <span class="light-only">{{template "icon" "moon"}}</span><span class="dark-only">{{template "icon" "sun"}}</span>
+  </button>
 </form>{{end}}
 
 {{/* orgswitch shows the current org; with several, a no-JS dropdown of POST forms switches it. */}}
@@ -127,8 +125,8 @@
 {{define "accesslabel"}}{{if eq .OrgAccess "manage"}}All tickets{{else if eq .OrgAccess "read"}}All tickets · read-only{{else if .CanCreate}}Your projects{{else}}Your projects · read-only{{end}}{{end}}
 
 {{define "brand"}}<a href="/my-tickets" class="flex items-center gap-2.5 text-foreground">
-  <img src="/my-tickets/assets/logo-light.svg?v={{assetVersion}}" alt="Encatch" class="logo-light h-6 w-auto" width="125" height="24">
-  <img src="/my-tickets/assets/logo-dark.png?v={{assetVersion}}" alt="Encatch" class="logo-dark h-6 w-auto" width="125" height="24">
+  <img src="/my-tickets/assets/logo-light.svg?v={{assetVersion}}" alt="Encatch" class="light-only h-6 w-auto" width="125" height="24">
+  <img src="/my-tickets/assets/logo-dark.png?v={{assetVersion}}" alt="Encatch" class="dark-only h-6 w-auto" width="125" height="24">
   <span class="border-l pl-2.5 text-sm font-medium text-muted-foreground">Support</span>
 </a>{{end}}
 
@@ -161,7 +159,6 @@
 {{- else if eq . "search"}}<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
 {{- else if eq . "sun"}}<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>
 {{- else if eq . "moon"}}<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
-{{- else if eq . "monitor"}}<rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/>
 {{- else if eq . "x"}}<path d="M18 6 6 18"/><path d="m6 6 12 12"/>
 {{- else if eq . "arrow-left"}}<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>
 {{- else if eq . "arrow-right"}}<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>

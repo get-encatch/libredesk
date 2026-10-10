@@ -24,7 +24,7 @@
     --sidebar: oklch(0.985 0.004 286);
     --radius: 0.625rem;
     --tracking-normal: -0.025em;
-    color-scheme: light; --logo-light-display: block; --logo-dark-display: none;
+    color-scheme: light; --light-only: block; --dark-only: none;
   }
   /* Encatch design tokens (dark): when the visitor chose Dark, or follows a dark device.
      The two blocks must stay identical (mytickets_test.go checks). */
@@ -44,7 +44,7 @@
     --warning: oklch(94.5% 0.129 101.54 / 0); --warning-foreground: oklch(68.1% 0.162 75.834);
     --success: oklch(0.7 0.15 155); --success-foreground: oklch(0.9219 0 0);
     --info: oklch(29.32% 0.0658 242.91); --info-foreground: oklch(73.28% 0.146 229.96);
-    color-scheme: dark; --logo-light-display: none; --logo-dark-display: block;
+    color-scheme: dark; --light-only: none; --dark-only: block;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -63,7 +63,7 @@
       --warning: oklch(94.5% 0.129 101.54 / 0); --warning-foreground: oklch(68.1% 0.162 75.834);
       --success: oklch(0.7 0.15 155); --success-foreground: oklch(0.9219 0 0);
       --info: oklch(29.32% 0.0658 242.91); --info-foreground: oklch(73.28% 0.146 229.96);
-      color-scheme: dark; --logo-light-display: none; --logo-dark-display: block;
+      color-scheme: dark; --light-only: none; --dark-only: block;
     }
   }
   html { scrollbar-gutter: stable; }
@@ -73,17 +73,15 @@
 }
 
 @layer components {
-  /* Logo for the current theme (tokens above). */
-  .logo-light { display: var(--logo-light-display); }
-  .logo-dark { display: var(--logo-dark-display); }
+  /* Shown only in the light or the dark theme (tokens above): logos, the toggle's icon. */
+  .light-only { display: var(--light-only); }
+  .dark-only { display: var(--dark-only); }
 
-  /* Appearance switch (system / light / dark) at the end of the ticket menu. */
-  .theme-switch { @apply flex items-center justify-between gap-2 px-4 py-2; }
+  /* Appearance toggle, above the user bar (end of the menu on phones). */
+  .theme-switch { @apply flex items-center justify-between gap-2 px-4 py-1.5; }
   .theme-switch-label { @apply text-xs font-medium text-muted-foreground; }
-  .theme-switch-options { @apply inline-flex items-center gap-0.5 rounded-md border p-0.5; }
-  .theme-switch-options button { @apply inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring; }
-  .theme-switch-options button .icon { @apply h-4 w-4; }
-  .theme-switch-options button[aria-pressed="true"] { @apply bg-accent text-foreground; }
+  .theme-toggle { @apply h-8 w-8 text-muted-foreground hover:text-foreground; }
+  .theme-toggle .icon { @apply h-4 w-4; }
 
   /* Button (buttonVariants) */
   .btn { @apply inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 h-9 px-4 py-2; }

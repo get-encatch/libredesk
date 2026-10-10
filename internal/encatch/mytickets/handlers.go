@@ -537,8 +537,8 @@ func safeBack(path string) string {
 	return basePath
 }
 
-// Theme saves the light/dark choice (theme.js does the same without a reload) and returns
-// to the page it came from.
+// Theme saves the light/dark choice ("light", "dark", "system", or "toggle" from the
+// toggle's form) and returns to the page it came from. theme.js does this without a reload.
 func (s *Service) Theme(r *fastglue.Request) error {
 	back := safeBack(string(r.RequestCtx.FormValue("back")))
 	sess, ok := s.session(r)
@@ -551,11 +551,21 @@ func (s *Service) Theme(r *fastglue.Request) error {
 	c.SetPath(basePath)
 	c.SetSecure(true)
 	c.SetSameSite(fasthttp.CookieSameSiteLaxMode)
-	switch theme := string(r.RequestCtx.FormValue("theme")); theme {
+	theme := string(r.RequestCtx.FormValue("theme"))
+	if theme == "toggle" {
+		// Without theme.js the server can't see the device's setting: flip between
+		// following the device (assumed light) and dark.
+		if themeOf(r) == "" {
+			theme = "dark"
+		} else {
+			theme = "system"
+		}
+	}
+	switch theme {
 	case "light", "dark":
 		c.SetValue(theme)
 		c.SetMaxAge(365 * 24 * 60 * 60)
-	default: // "system": forget the choice
+	default: // "system": follow the device again
 		c.SetExpire(fasthttp.CookieExpireDelete)
 	}
 	r.RequestCtx.Response.Header.SetCookie(c)
