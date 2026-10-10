@@ -116,6 +116,21 @@ docker run --rm -v $PWD/backups/restic:/repo -v $PWD/secrets/restic-password:/pw
 
 **From a `pg_dump` file** (into an empty database): `docker exec -u postgres libredesk_db pg_restore -U $POSTGRES_USER -d $POSTGRES_DB --clean --if-exists /backups/dumps/<file>.dump`.
 
+## My Tickets (customer pages)
+
+`support.encatch.com/my-tickets`: customers arrive from an Encatch backend app with a signed
+token (HS256 JWT, 60 s, one use) and get an 8-hour session to list, view, raise and reply to
+tickets. Config: `[my_tickets]` in `config.toml`. Issuer secrets live only in
+`secrets/my-tickets.env` on the server, one line per backend app:
+
+```
+LIBREDESK_MY_TICKETS__ISSUERS__ENCATCH_DASHBOARD=current-secret,previous-secret
+```
+
+(issuer `encatch-dashboard` -> `ENCATCH_DASHBOARD`; list a previous secret during rotation).
+After editing it: `docker compose up -d app`. `my-tickets/make-link.py` is a reference token
+generator for backend teams and testing.
+
 ## Adding object storage later
 
 - **Database:** fill in the commented `repo2-*` block in `postgres/pgbackrest.conf`

@@ -1,0 +1,30 @@
+{{define "new.html"}}{{template "head" (dict "Title" "New ticket" "S" .S)}}
+<style>
+form.card{padding:8px 20px 20px}
+.choices{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.choice{border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:flex;gap:10px;align-items:flex-start;font-weight:400;margin:0;cursor:pointer}
+.choice b{display:block}
+.choice span{color:var(--muted);font-size:13px}
+</style>
+<a class="back" href="/my-tickets" style="font-size:14px;text-decoration:none;color:var(--muted)">&larr; All tickets</a>
+<h1 style="margin-top:8px">New ticket</h1>
+<p class="sub">For {{.S.OrgName}}. We'll reply here and by email to {{.S.Email}}.</p>
+{{if .Problem}}<p class="notice err">{{.Problem}}</p>{{end}}
+<form class="card" method="post" action="/my-tickets/new">
+<input type="hidden" name="csrf" value="{{.S.CSRF}}">
+{{if .S.Projects}}<label for="project">Project</label>
+<select id="project" name="project"><option value="">Not about a specific project</option>{{$p := .Project}}{{range .S.Projects}}<option value="{{.ID}}" {{if eq (print .ID) $p}}selected{{end}}>{{.Name}}</option>{{end}}</select>{{end}}
+<label for="subject">Subject</label>
+<input type="text" id="subject" name="subject" value="{{.Subject}}" required maxlength="200">
+<label for="message">What do you need help with?</label>
+<textarea id="message" name="message" required maxlength="20000">{{.Message}}</textarea>
+<p class="hint">For bugs, include the steps to reproduce, what you expected, and the SDK and version.</p>
+{{if .CanChoosePriority}}<label>Priority</label>
+<div class="choices">{{$cur := .Priority}}
+<label class="choice"><input type="radio" name="priority" value="Normal" {{if or (eq $cur "Normal") (eq $cur "")}}checked{{end}}><div><b>Normal</b><span>Questions and issues with a workaround</span></div></label>
+<label class="choice"><input type="radio" name="priority" value="Express" {{if eq $cur "Express"}}checked{{end}}><div><b>Express</b><span>A key feature is broken, no workaround</span></div></label>
+<label class="choice"><input type="radio" name="priority" value="Urgent" {{if eq $cur "Urgent"}}checked{{end}}><div><b>Urgent</b><span>Production is down or data is at risk</span></div></label>
+</div>{{end}}
+<p style="margin-top:20px"><button class="btn" type="submit">Submit ticket</button></p>
+</form>
+{{template "foot"}}{{end}}

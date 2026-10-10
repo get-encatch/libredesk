@@ -14,6 +14,10 @@ services:
       LIBREDESK_DB__USER: ${POSTGRES_USER}
       LIBREDESK_DB__PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       LIBREDESK_DB__DATABASE: ${POSTGRES_DB}
+    # My Tickets issuer secrets (server only, see config.toml [my_tickets]).
+    env_file:
+      - path: ./secrets/my-tickets.env
+        required: false
     ports:
       # Local only, for SSH tunnels. Public traffic goes through Caddy.
       - "127.0.0.1:9000:9000"

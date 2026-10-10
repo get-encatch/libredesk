@@ -57,3 +57,6 @@ All marked `encatch:`. Keep this list current.
 - `internal/user/agent.go`: the System agent's email can't change (libredesk won't start without it).
 - `frontend/apps/main/src/features/admin/agents/formSchema.js`: the agent form accepts `System` as an email.
 - `frontend/apps/main/src/features/reports/OverviewBarChart.vue`: Urgent priority in the reports chart.
+- `cmd/handlers.go`: one call to `initEncatchMyTickets(g)` at the end of `initHandlers`.
+
+Our own code (new files only): `internal/encatch/mytickets/` (My Tickets: signed-token customer pages; `adapter.go` is the only file there that calls libredesk code) and `cmd/encatch_mytickets.go` (wiring, routes, config). Design doc: https://claude.ai/code/artifact/2a8250ea-adf1-44c9-9602-8c6f9c440670

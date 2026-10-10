@@ -1,0 +1,6 @@
+{{define "message.html"}}{{template "head" (dict "Title" .Title "S" nil)}}
+<div class="card" style="max-width:520px;margin:40px auto;padding:28px">
+<h1>{{.Title}}</h1>
+<p class="sub" style="margin:8px 0 0">{{.Text}}</p>
+</div>
+{{template "foot"}}{{end}}

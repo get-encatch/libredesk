@@ -36,6 +36,13 @@ if [ ! -f secrets/restic-password ]; then
   echo "created secrets/restic-password"
 fi
 
+if [ ! -f secrets/my-tickets.env ]; then
+  # One issuer to start with, for testing; add one line per Encatch backend app.
+  echo "LIBREDESK_MY_TICKETS__ISSUERS__ENCATCH_TEST=$(openssl rand -hex 32)" > secrets/my-tickets.env
+  chmod 600 secrets/my-tickets.env
+  echo "created secrets/my-tickets.env (issuer: encatch-test)"
+fi
+
 echo "== containers"
 docker compose build --pull db
 docker compose pull app redis caddy

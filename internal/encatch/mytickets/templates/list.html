@@ -1,0 +1,34 @@
+{{define "list.html"}}{{template "head" (dict "Title" "Your tickets" "S" .S)}}
+<style>
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px}
+.filters a{font-size:13px;text-decoration:none;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:4px 12px}
+.filters a.on{color:var(--accent-ink);background:var(--accent);border-color:var(--accent)}
+.filters select{width:auto;padding:4px 10px;font-size:13px}
+.t{display:block;padding:14px 16px;border-top:1px solid var(--line);text-decoration:none;color:var(--text)}
+.t:first-child{border-top:0}
+.t:hover{background:var(--bg)}
+.row1{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
+.subj{font-weight:600;overflow-wrap:anywhere}
+.meta{color:var(--muted);font-size:13px;margin-top:2px}
+.empty{padding:32px 16px;text-align:center;color:var(--muted)}
+</style>
+<div class="top">
+<div><h1>Your tickets</h1>
+<p class="sub">{{if eq .S.Scope "org"}}All tickets for {{.S.OrgName}}{{else if eq .S.Scope "project"}}Tickets for your projects in {{.S.OrgName}}{{else}}Tickets you raised for {{.S.OrgName}}{{end}}</p></div>
+<a class="btn" href="/my-tickets/new">New ticket</a>
+</div>
+<div class="filters">
+<a href="/my-tickets{{if .Project}}?project={{.Project}}{{end}}" class="{{if not .Status}}on{{end}}">All</a>
+{{$p := .Project}}{{$cur := .Status}}{{range .Statuses}}<a href="/my-tickets?status={{.}}{{if $p}}&amp;project={{$p}}{{end}}" class="{{if eq . $cur}}on{{end}}">{{.}}</a>{{end}}
+{{if and .ShowProject (eq .S.Scope "org")}}<form method="get" action="/my-tickets" class="inline">{{if .Status}}<input type="hidden" name="status" value="{{.Status}}">{{end}}
+<select name="project" aria-label="Project"><option value="">All projects</option>{{range .S.Projects}}<option value="{{.ID}}" {{if eq (print .ID) $p}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+<button class="btn quiet" type="submit">Filter</button></form>{{end}}
+</div>
+<div class="card">
+{{range .Tickets}}<a class="t" href="/my-tickets/{{.ReferenceNumber}}">
+<div class="row1"><span class="subj">{{.Subject}}</span><span class="badge {{statusClass .Status}}">{{.Status}}</span></div>
+<div class="meta">#{{.ReferenceNumber}} · updated {{date .UpdatedAt}}{{if and $.ShowProject .ProjectName}} · {{.ProjectName}}{{end}}{{if $.ShowRaisedBy}} · raised by {{.RaisedBy}}{{end}}</div>
+</a>{{else}}<div class="empty">No tickets here yet. <a href="/my-tickets/new">Raise a ticket</a> and we'll get back to you.</div>{{end}}
+</div>
+{{template "foot"}}{{end}}

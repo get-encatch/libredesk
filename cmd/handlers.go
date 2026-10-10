@@ -405,6 +405,9 @@ func initHandlers(g *fastglue.Fastglue, hub *ws.Hub) {
 
 	// Health check.
 	g.GET("/health", handleHealthCheck)
+
+	// encatch: My Tickets customer pages (cmd/encatch_mytickets.go).
+	initEncatchMyTickets(g)
 }
 
 // serveIndexPage serves the main index page of the application.

@@ -1,0 +1,36 @@
+{{define "ticket.html"}}{{template "head" (dict "Title" .T.Subject "S" .S)}}
+<style>
+.back{font-size:14px;text-decoration:none;color:var(--muted)}
+.head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin:8px 0 4px;flex-wrap:wrap}
+.head h1{overflow-wrap:anywhere}
+.msg{padding:16px;border-top:1px solid var(--line)}
+.msg:first-child{border-top:0}
+.msg.agent{background:var(--bg)}
+.who{font-size:13px;color:var(--muted);margin:0 0 8px}
+.who b{color:var(--text)}
+.body{overflow-wrap:anywhere}
+.body img{max-width:100%;height:auto}
+.body blockquote{margin:8px 0;padding-left:12px;border-left:3px solid var(--line);color:var(--muted)}
+.files{margin:10px 0 0;padding:0;list-style:none;font-size:13px}
+.reply{margin-top:20px;padding:16px}
+</style>
+<a class="back" href="/my-tickets">&larr; All tickets</a>
+<div class="head"><h1>{{.T.Subject}}</h1><span class="badge {{statusClass .Status}}">{{.Status}}</span></div>
+<p class="sub">#{{.T.ReferenceNumber}} · opened {{date .T.CreatedAt}}{{if .T.ProjectName}} · {{.T.ProjectName}}{{end}}{{if ne .S.ContactID .T.ContactID}} · raised by {{.T.RaisedBy}}{{end}}</p>
+{{if .Sent}}<p class="notice ok">Your reply was sent. We'll get back to you here and by email.</p>{{end}}
+{{if eq .Status "Waiting on you"}}<p class="notice ok">We're waiting for your reply. Add any details below.</p>{{end}}
+<div class="card">
+{{range .Messages}}<div class="msg {{if not .FromCustomer}}agent{{end}}">
+<p class="who"><b>{{if .FromCustomer}}{{.AuthorName}}{{else}}Encatch Support{{if .AuthorName}} ({{.AuthorName}}){{end}}{{end}}</b> · {{date .CreatedAt}}</p>
+<div class="body">{{.Body}}</div>
+{{if .Attachments}}<ul class="files">{{range .Attachments}}<li><a href="{{.URL}}" rel="noopener">{{.Name}}</a></li>{{end}}</ul>{{end}}
+</div>{{else}}<div class="msg">No messages yet.</div>{{end}}
+</div>
+<form class="card reply" method="post" action="/my-tickets/{{.T.ReferenceNumber}}/reply">
+<input type="hidden" name="csrf" value="{{.S.CSRF}}">
+<label for="message">{{if eq .Status "Resolved"}}Reply to reopen this ticket{{else}}Add a reply{{end}}</label>
+<textarea id="message" name="message" required maxlength="20000"></textarea>
+<p class="hint">We'll also email you when we reply.</p>
+<p><button class="btn" type="submit">Send reply</button></p>
+</form>
+{{template "foot"}}{{end}}
