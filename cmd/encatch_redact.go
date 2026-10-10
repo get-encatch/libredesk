@@ -5,6 +5,7 @@ package main
 
 import (
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -44,6 +45,27 @@ func initEncatchRedact(g *fastglue.Fastglue) {
 		return r
 	})
 
+	// The removal log is visible to whoever can see libredesk's activity log (admins by default).
+	g.GET("/api/v1/encatch/redactions", perm(func(r *fastglue.Request) error {
+		var (
+			app     = r.Context.(*App)
+			q       = r.RequestCtx.QueryArgs()
+			page    = q.GetUintOrZero("page")
+			perPage = q.GetUintOrZero("per_page")
+		)
+		rows, total, err := get(app).List(string(q.Peek("search")), page, perPage)
+		if err != nil {
+			app.lo.Error("listing removal log", "error", err)
+			return r.SendErrorEnvelope(fasthttp.StatusInternalServerError, "Couldn't load the removal log.", nil, envelope.GeneralError)
+		}
+		if perPage < 1 || perPage > redact.MaxPerPage {
+			perPage = 20
+		}
+		return r.SendEnvelope(map[string]any{
+			"results": rows, "total": total, "per_page": perPage, "total_pages": (total + perPage - 1) / perPage,
+		})
+	}, "activity_logs:manage"))
+
 	g.POST("/api/v1/encatch/conversations/{cuuid}/messages/{uuid}/remove-attachment",
 		perm(func(r *fastglue.Request) error { return handleRedact(r, get, true) }, "messages:write"))
 	g.POST("/api/v1/encatch/conversations/{cuuid}/messages/{uuid}/remove-text",
@@ -71,7 +93,7 @@ func handleRedact(r *fastglue.Request, get func(*App) *redact.Service, attachmen
 	if err := r.Decode(&req, "json"); err != nil {
 		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, "Invalid request.", nil, envelope.InputError)
 	}
-	actor := redact.Actor{ID: user.ID, Name: user.FullName(), IsAdmin: user.HasAdminRole()}
+	actor := redact.Actor{ID: user.ID, Name: strings.TrimSpace(user.FullName()), IsAdmin: user.HasAdminRole()}
 	var res redact.Result
 	if attachment {
 		if req.MediaUUID == "" {

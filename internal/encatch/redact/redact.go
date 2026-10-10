@@ -394,3 +394,57 @@ func (s *Service) PurgeDeletedNoteFiles(ctx context.Context, every time.Duration
 		}
 	}
 }
+
+// LogEntry is one row of the removal log, for the admin page.
+type LogEntry struct {
+	ID                    int64     `db:"id" json:"id"`
+	CreatedAt             time.Time `db:"created_at" json:"created_at"`
+	ConversationUUID      string    `db:"conversation_uuid" json:"conversation_uuid"`
+	ConversationReference string    `db:"conversation_reference" json:"conversation_reference"`
+	MessageUUID           string    `db:"message_uuid" json:"message_uuid"`
+	MessageType           string    `db:"message_type" json:"message_type"`
+	MessagePrivate        bool      `db:"message_private" json:"message_private"`
+	MessageSenderType     string    `db:"message_sender_type" json:"message_sender_type"`
+	Kind                  string    `db:"kind" json:"kind"`
+	FileName              *string   `db:"file_name" json:"file_name"`
+	Exposure              string    `db:"exposure" json:"exposure"`
+	ActorID               int       `db:"actor_id" json:"actor_id"`
+	ActorName             string    `db:"actor_name" json:"actor_name"`
+	ActorIsAdmin          bool      `db:"actor_is_admin" json:"actor_is_admin"`
+	Reason                string    `db:"reason" json:"reason"`
+	Outcome               string    `db:"outcome" json:"outcome"`
+	Total                 int       `db:"total" json:"-"`
+}
+
+// MaxPerPage bounds a page of the removal log.
+const MaxPerPage = 100
+
+// List returns a page of the removal log, newest first. search matches the
+// reason, file name, agent name, or a ticket number ("123" or "#123").
+func (s *Service) List(search string, page, perPage int) ([]LogEntry, int, error) {
+	if perPage < 1 || perPage > MaxPerPage {
+		perPage = 20
+	}
+	if page < 1 {
+		page = 1
+	}
+	where, args := "", []any{perPage, (page - 1) * perPage}
+	if search = strings.TrimSpace(search); search != "" {
+		like := "%" + strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(search) + "%"
+		args = append(args, like, strings.TrimPrefix(search, "#"))
+		where = `WHERE reason ILIKE $3 OR file_name ILIKE $3 OR actor_name ILIKE $3 OR conversation_reference = $4`
+	}
+	rows := []LogEntry{}
+	err := s.DB.Select(&rows, `SELECT id, created_at, conversation_uuid, conversation_reference, message_uuid, message_type,
+		message_private, message_sender_type, kind, file_name, exposure, actor_id, actor_name, actor_is_admin, reason, outcome,
+		COUNT(*) OVER () AS total
+		FROM encatch_redactions `+where+` ORDER BY created_at DESC, id DESC LIMIT $1 OFFSET $2`, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("listing removal log: %w", err)
+	}
+	total := 0
+	if len(rows) > 0 {
+		total = rows[0].Total
+	}
+	return rows, total, nil
+}

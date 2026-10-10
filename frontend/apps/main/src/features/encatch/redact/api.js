@@ -20,3 +20,7 @@ export const removeAttachment = (cuuid, uuid, mediaUUID, reason) =>
 
 export const removeText = (cuuid, uuid, reason) =>
   post(`${base(cuuid, uuid)}/remove-text`, { reason })
+
+// Removal log for the admin page (needs activity_logs:manage).
+export const listRemovals = (params) =>
+  axios.get('/api/v1/encatch/redactions', { params, timeout: 20000 })

@@ -446,6 +446,13 @@ const routes = [
                 name: 'activity-log',
                 component: () => import('@main/views/admin/activity-log/ActivityLog.vue'),
                 meta: { titleKey: 'globals.terms.activityLog', titleCount: 2 }
+              },
+              // encatch: removal log for "Remove for security" (features/encatch/redact).
+              {
+                path: 'removal-log',
+                name: 'encatch-removal-log',
+                component: () => import('@main/features/encatch/redact/RemovalLog.vue'),
+                meta: { titleKey: 'Removal log' }
               }
             ]
           },

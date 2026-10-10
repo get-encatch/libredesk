@@ -183,6 +183,13 @@ export const adminNavItems = [
         permission: 'activity_logs:manage',
         isTitleKeyPlural: true,
         icon: 'ScrollText'
+      },
+      // encatch: removal log (untranslated title; vue-i18n shows the key as-is).
+      {
+        titleKey: 'Removal log',
+        href: '/admin/teams/removal-log',
+        permission: 'activity_logs:manage',
+        icon: 'Shield'
       }
     ]
   },
