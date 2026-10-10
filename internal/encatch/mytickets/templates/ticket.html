@@ -6,6 +6,7 @@
     <span class="hidden text-muted-foreground lg:block">{{template "icon" "message"}}</span>
     <h2 class="min-w-0 flex-1 truncate text-sm font-semibold" title="{{.T.Subject}}">{{.T.Subject}}</h2>
     {{template "status-pill" .TicketStatus}}
+    <a href="/my-tickets{{.Filters}}" class="btn btn-ghost btn-icon -mr-2 hidden lg:inline-flex" aria-label="Back to the list" title="Back to the list">{{template "icon" "x"}}</a>
   </header>
 
   <div class="thread-body">
