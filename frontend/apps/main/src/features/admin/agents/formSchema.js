@@ -20,11 +20,12 @@ export const createFormSchema = (t) => z.object({
 
   last_name: z.string().optional(),
 
+  // encatch: the built-in System agent's email is the literal "System".
   email: z
     .string({
       required_error: t('globals.messages.required'),
     })
-    .email({
+    .refine((v) => v === 'System' || z.string().email().safeParse(v).success, {
       message: t('validation.invalidEmail'),
     }),
 

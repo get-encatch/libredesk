@@ -48,3 +48,12 @@ This repo is **get-encatch/libredesk**, the Encatch (CMSS) fork of [abhinavxd/li
 - Helpdesk data change made directly in the production DB (no admin UI exists for it): an `Urgent` row in `conversation_priorities`. If an upstream migration ever inserts its own priorities, check it doesn't clash. The reports chart's hard-coded priority list (`OverviewBarChart.vue`) was extended to include it.
 - Support tiers, SLA policies and SLA automation rules are config-as-code in `deploy/helpdesk-config/` (`config.json` + `apply.py`, run via the libredesk API). All SLAs use business hours (desk default: IST office hours). The script owns every automation rule named `SLA…`. Teams must not get their own business hours or SLA policy (either overrides the tier SLAs).
 - Never change the System agent's email from `System`: libredesk looks it up by that email and refuses to start without it. The agent edit form forces a valid email, so don't save System through it; use `./libredesk --set-system-user-password` for its password.
+
+## Fork changes to upstream code (check these when merging upstream)
+
+All marked `encatch:`. Keep this list current.
+
+- `internal/automation/evaluator.go`: rules read ticket custom attributes (`conversation_custom_attribute`, constant in `internal/automation/models/encatch.go`), and a missing custom attribute counts as empty so "not set" matches. Tests: `internal/automation/encatch_evaluator_test.go`. Candidate upstream PR.
+- `internal/user/agent.go`: the System agent's email can't change (libredesk won't start without it).
+- `frontend/apps/main/src/features/admin/agents/formSchema.js`: the agent form accepts `System` as an email.
+- `frontend/apps/main/src/features/reports/OverviewBarChart.vue`: Urgent priority in the reports chart.

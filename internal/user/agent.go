@@ -134,6 +134,12 @@ func (u *Manager) UpdateAgent(id int, firstName, lastName, email string, roles [
 		u.lo.Info("setting new password for user", "user_id", id)
 	}
 
+	// encatch: libredesk finds the System user by its email and refuses to start without
+	// it, so its email can never change (the agent form used to force a real address).
+	if sys, err := u.GetSystemUser(); err == nil && sys.ID == id {
+		email = models.SystemUserEmail
+	}
+
 	// Update user in the database.
 	// COALESCE preserves the stored status only on NULL, an empty string hits the enum cast.
 	availability := null.String{}

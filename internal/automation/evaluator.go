@@ -164,9 +164,16 @@ func (e *Engine) evaluateRule(rule models.RuleDetail, conversation cmodels.Conve
 			e.lo.Error("error unrecognized conversation field", "field", rule.Field, "field_type", rule.FieldType, "conversation_uuid", conversation.UUID)
 			return false
 		}
-	} else if rule.FieldType == models.FieldTypeContactCustomAttribute {
+	} else if rule.FieldType == models.FieldTypeContactCustomAttribute || rule.FieldType == models.FieldTypeConversationCustomAttribute {
 		// If the field type is custom attribute, need to extract the value from the custom attributes
 		var attributes json.RawMessage = conversation.Contact.CustomAttributes
+		// encatch: ticket custom attributes.
+		if rule.FieldType == models.FieldTypeConversationCustomAttribute {
+			attributes = conversation.CustomAttributes
+		}
+		if len(attributes) == 0 {
+			attributes = json.RawMessage("{}")
+		}
 
 		// Unmarshal the custom attributes
 		if err := json.Unmarshal(attributes, &customAttributes); err != nil {
@@ -192,8 +199,10 @@ func (e *Engine) evaluateRule(rule models.RuleDetail, conversation cmodels.Conve
 				valueToCompare = fmt.Sprintf("%v", v)
 			}
 		} else {
-			e.lo.Warn("field not found in custom attribute", "field", rule.Field, "field_type", rule.FieldType, "conversation_uuid", conversation.UUID, "custom_attributes", customAttributes)
-			return false
+			// encatch: a missing attribute is an empty value, so "not set" matches it
+			// (upstream returned false for every operator).
+			e.lo.Debug("field not found in custom attribute, treating as empty", "field", rule.Field, "field_type", rule.FieldType, "conversation_uuid", conversation.UUID)
+			valueToCompare = ""
 		}
 	} else {
 		e.lo.Error("error unrecognized field type", "field_type", rule.FieldType, "conversation_uuid", conversation.UUID)

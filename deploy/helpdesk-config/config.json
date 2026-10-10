@@ -15,6 +15,68 @@
       "Enterprise Premium"
     ]
   },
+  "_ticket_attributes_comment": "Ticket (conversation) custom fields. My Tickets sets them from the signed token; SLA rules read ticket_tier first and fall back to the contact's Support tier. source_app empty = arrived by email.",
+  "ticket_attributes": [
+    {
+      "key": "org_id",
+      "name": "Org ID",
+      "type": "text",
+      "description": "Encatch org the ticket was raised for"
+    },
+    {
+      "key": "org_name",
+      "name": "Org name",
+      "type": "text",
+      "description": "Encatch org name"
+    },
+    {
+      "key": "ticket_tier",
+      "name": "Ticket support tier",
+      "type": "list",
+      "values": [
+        "SaaS Standard",
+        "SaaS Growth",
+        "Growth Plus",
+        "Enterprise Standard",
+        "Enterprise Premium"
+      ],
+      "description": "Support tier of the ticket's org; overrides the contact's Support tier for SLAs"
+    },
+    {
+      "key": "requested_priority",
+      "name": "Requested priority",
+      "type": "list",
+      "values": [
+        "Normal",
+        "Express",
+        "Urgent"
+      ],
+      "description": "Priority the customer chose in My Tickets"
+    },
+    {
+      "key": "project_id",
+      "name": "Project ID",
+      "type": "text",
+      "description": "Encatch project the ticket is about"
+    },
+    {
+      "key": "project_name",
+      "name": "Project name",
+      "type": "text",
+      "description": "Encatch project name"
+    },
+    {
+      "key": "source_app",
+      "name": "Source app",
+      "type": "text",
+      "description": "Backend app that raised the ticket via My Tickets; empty = email"
+    }
+  ],
+  "requested_priority_labels": {
+    "Medium": "Normal",
+    "High": "Express",
+    "Urgent": "Urgent"
+  },
   "sla_policies": [
     {
       "name": "SaaS Standard",

@@ -46,10 +46,10 @@ def cond(field, operator, value="", field_type="conversation"):
             "case_sensitive_match": False}
 
 
-def rule_body(match_any, actions, and_any=None):
-    """match_any: conditions ORed together (group 1). and_any: optional conditions ORed
-    together (group 2) that must also match (groups are ANDed)."""
-    groups = [{"logical_op": "OR", "rules": match_any},
+def rule_body(match_any, actions, and_any=None, g1_op="OR"):
+    """match_any: group 1 conditions, ORed (or ANDed with g1_op="AND"). and_any: optional
+    conditions ORed together (group 2) that must also match (groups are ANDed)."""
+    groups = [{"logical_op": g1_op, "rules": match_any},
               {"logical_op": "OR", "rules": and_any or []}]
     return [{"groups": groups, "actions": actions, "group_operator": "AND" if and_any else "OR"}]
 
@@ -79,6 +79,20 @@ def main():
     elif attrs[0]["name"] != a["name"] or attrs[0]["values"] != a["values"] or attrs[0]["description"] != a["description"]:
         print("attribute: update %s" % a["name"])
         api.call("PUT", "/api/v1/custom-attributes/%d" % attrs[0]["id"], body)
+
+    # 2b. Ticket (conversation) custom fields, matched by key; others are left alone.
+    tattrs = {x["key"]: x for x in api.call("GET", "/api/v1/custom-attributes?applies_to=conversation") or []}
+    for ta in cfg.get("ticket_attributes", []):
+        body = {"applies_to": "conversation", "key": ta["key"], "name": ta["name"], "description": ta["description"],
+                "data_type": ta["type"], "values": ta.get("values", []), "regex": "", "regex_hint": ""}
+        cur = tattrs.get(ta["key"])
+        if not cur:
+            print("ticket field: create %s" % ta["name"])
+            api.call("POST", "/api/v1/custom-attributes", body)
+        elif (cur["name"], cur["description"], cur["data_type"], cur["values"] or []) != \
+                (ta["name"], ta["description"], ta["type"], ta.get("values", [])):
+            print("ticket field: update %s" % ta["name"])
+            api.call("PUT", "/api/v1/custom-attributes/%d" % cur["id"], body)
 
     # 3. SLA policies, with warning/breach alerts.
     def recipients(spec):
@@ -148,7 +162,41 @@ def main():
             acts.append({"type": "add_tags", "value": list(tags)})
         return acts
 
+    TICKET = "conversation_custom_attribute"
+    labels = cfg.get("requested_priority_labels", {})
+
+    def ticket_tier_is(t):
+        return cond("ticket_tier", "equals", t, TICKET)
+
+    no_ticket_tier = cond("ticket_tier", "not set", "", TICKET)
     new_rules, update_rules = [], []
+
+    # Tickets that carry their own tier (raised via My Tickets) match these first. New-ticket
+    # rules are first-match, so they never fall through to the contact-tier rules below.
+    for t in cfg["tiers"]:
+        name, tags, prios = t["name"], t.get("tags", []), t.get("priorities")
+        if prios:
+            for level in ("Urgent", "High"):
+                new_rules.append(("%s new: ticket tier %s, %s requested" % (RULE_PREFIX, name, labels[level]),
+                                  "New ticket with ticket tier %s and requested priority %s: %s priority, %s SLA." % (name, labels[level], level, prios[level]),
+                                  rule_body([ticket_tier_is(name)], actions(prios[level], level, tags, new_ticket=True),
+                                            and_any=[cond("requested_priority", "equals", labels[level], TICKET)])))
+            new_rules.append(("%s new: ticket tier %s" % (RULE_PREFIX, name),
+                              "New ticket with ticket tier %s: Medium priority, %s SLA." % (name, prios["Medium"]),
+                              rule_body([ticket_tier_is(name)], actions(prios["Medium"], "Medium", tags, new_ticket=True))))
+            for level, sla_name in prios.items():
+                update_rules.append(("%s priority: ticket tier %s, %s" % (RULE_PREFIX, name, level),
+                                     "Ticket tier %s ticket set to %s priority: %s SLA." % (name, level, sla_name),
+                                     rule_body([ticket_tier_is(name)], actions(sla_name), and_any=[cond("priority", "equals", prio[level])])))
+        else:
+            new_rules.append(("%s new: ticket tier %s" % (RULE_PREFIX, name),
+                              "New ticket with ticket tier %s: Medium priority, %s SLA." % (name, t["sla"]),
+                              rule_body([ticket_tier_is(name)], actions(t["sla"], "Medium", tags, new_ticket=True))))
+            update_rules.append(("%s priority: ticket tier %s" % (RULE_PREFIX, name),
+                                 "Ticket tier %s ticket priority changed: re-apply %s SLA." % (name, t["sla"]),
+                                 rule_body([ticket_tier_is(name)], actions(t["sla"]))))
+
+    # Tickets without a ticket tier (e.g. email) use the contact's Support tier.
     for t in cfg["tiers"]:
         name, tags, prios = t["name"], t.get("tags", []), t.get("priorities")
         if prios:
@@ -161,18 +209,17 @@ def main():
             new_rules.append(("%s new: %s" % (RULE_PREFIX, name),
                               "New %s ticket: Medium priority, %s SLA." % (name, prios["Medium"]),
                               rule_body(in_tier(t), actions(prios["Medium"], "Medium", tags, new_ticket=True))))
-            # Priority change: apply the tier's SLA for the new priority.
+            # Priority change: apply the tier's SLA for the new priority (only without a ticket tier).
             for level, sla_name in prios.items():
                 update_rules.append(("%s priority: %s, %s" % (RULE_PREFIX, name, level),
-                                     "%s ticket set to %s priority: %s SLA." % (name, level, sla_name),
-                                     rule_body(in_tier(t), actions(sla_name), and_any=[cond("priority", "equals", prio[level])])))
+                                     "%s contact, ticket without its own tier, set to %s priority: %s SLA." % (name, level, sla_name),
+                                     rule_body(in_tier(t) + [no_ticket_tier], actions(sla_name),
+                                               and_any=[cond("priority", "equals", prio[level])], g1_op="AND")))
         else:
             match = in_tier(t)
             if t.get("catch_all"):
-                # libredesk evaluates "not set" as false when the contact has never had the
-                # attribute (evaluator.go returns early), so also match every email sender.
-                # This is the last rule and new-ticket rules are first-match, so it only
-                # catches tickets no tier rule matched.
+                # Last new-ticket rule (first-match): catches tickets no tier rule matched.
+                # contact_email is a belt-and-braces match for any email sender.
                 match = [cond(tier_key, "not set", "", "contact_custom_attribute"),
                          cond("contact_email", "contains", "@")] + match
             new_rules.append(("%s new: %s" % (RULE_PREFIX, name),
@@ -181,8 +228,8 @@ def main():
             if not t.get("catch_all"):
                 # Re-apply on priority change, for tickets whose tier was recorded after they arrived.
                 update_rules.append(("%s priority: %s" % (RULE_PREFIX, name),
-                                     "%s ticket priority changed: re-apply %s SLA (catches tier recorded late)." % (name, t["sla"]),
-                                     rule_body(in_tier(t), actions(t["sla"]))))
+                                     "%s contact, ticket without its own tier, priority changed: re-apply %s SLA." % (name, t["sla"]),
+                                     rule_body(in_tier(t) + [no_ticket_tier], actions(t["sla"]), g1_op="AND")))
 
     # 5. Sync rules (owned = name starts with RULE_PREFIX).
     current = {}
