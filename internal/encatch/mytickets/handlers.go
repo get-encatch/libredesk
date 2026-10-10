@@ -10,7 +10,10 @@ import (
 	"fmt"
 	"html"
 	"html/template"
+	"io"
+	"mime/multipart"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"time"
 	"unicode"
@@ -53,6 +56,7 @@ const (
 	maxMessageLen  = 20000
 	defaultPerPage = 200
 	maxSearchLen   = 100
+	maxFiles       = 5 // attachments per ticket or reply
 )
 
 // Service holds My Tickets' dependencies and serves its pages.
@@ -65,6 +69,7 @@ type Service struct {
 	lo            *logf.Logger
 	tmpl          *template.Template
 	sanitize      *bluemonday.Policy
+	uploadLimits  func() UploadLimits
 }
 
 // Opts configures a Service.
@@ -75,6 +80,8 @@ type Opts struct {
 	EligibleTiers []string // tiers that may choose Express/Urgent
 	SessionTTL    time.Duration
 	Logger        *logf.Logger
+	// UploadLimits returns libredesk's current upload settings. Nil disables attachments.
+	UploadLimits func() UploadLimits
 }
 
 func New(o Opts) (*Service, error) {
@@ -100,6 +107,7 @@ func New(o Opts) (*Service, error) {
 	return &Service{
 		verifier: o.Verifier, store: o.Store, backend: o.Backend, eligibleTiers: o.EligibleTiers,
 		sessionTTL: o.SessionTTL, lo: o.Logger, tmpl: tmpl, sanitize: bluemonday.UGCPolicy(),
+		uploadLimits: o.UploadLimits,
 	}, nil
 }
 
@@ -248,6 +256,12 @@ func (s *Service) View(r *fastglue.Request) error {
 	if !ok {
 		return s.renderError(r, fasthttp.StatusNotFound, "We couldn't find that ticket.")
 	}
+	return s.renderTicket(r, sess, t, "", "")
+}
+
+// renderTicket shows a ticket's thread, with an optional problem and the
+// reply draft to keep after a rejected reply.
+func (s *Service) renderTicket(r *fastglue.Request, sess Session, t TicketSummary, problem, draft string) error {
 	msgs, err := s.backend.Messages(t.UUID)
 	if err != nil {
 		s.lo.Error("my-tickets: loading messages", "error", err)
@@ -269,7 +283,10 @@ func (s *Service) View(r *fastglue.Request) error {
 	data["T"] = t
 	data["TicketStatus"] = CustomerStatus(t.InternalStatus)
 	data["Messages"] = view
-	data["Sent"] = string(r.RequestCtx.QueryArgs().Peek("sent")) == "1"
+	data["Sent"] = problem == "" && string(r.RequestCtx.QueryArgs().Peek("sent")) == "1"
+	data["Problem"] = problem
+	data["Draft"] = draft
+	data["Uploads"] = s.uploadInfo()
 	return s.render(r, fasthttp.StatusOK, "ticket.html", data)
 }
 
@@ -311,6 +328,10 @@ func (s *Service) Create(r *fastglue.Request) error {
 	if project != "" && !projectOK {
 		problem = "Please choose one of your projects."
 	}
+	files, fileProblem := s.readUploads(r)
+	if problem == "" {
+		problem = fileProblem
+	}
 	if problem != "" {
 		return s.renderNewForm(r, sess, subject, body, project, priority, problem)
 	}
@@ -328,12 +349,12 @@ func (s *Service) Create(r *fastglue.Request) error {
 	if PriorityEligible(sess.SupportTier, s.eligibleTiers) && contains(PriorityChoices, priority) {
 		attrs[AttrRequestedPriority] = priority
 	}
-	ref, err := s.backend.CreateTicket(sess.ContactID, subject, textToHTML(body), attrs)
+	ref, err := s.backend.CreateTicket(sess.ContactID, subject, textToHTML(body), attrs, files)
 	if err != nil {
 		s.lo.Error("my-tickets: creating ticket", "error", err)
 		return s.renderNewForm(r, sess, subject, body, project, priority, "We couldn't create your ticket. Please try again.")
 	}
-	s.lo.Info("my-tickets: ticket created", "ref", ref, "iss", sess.Issuer, "org", sess.OrgID, "contact_id", sess.ContactID)
+	s.lo.Info("my-tickets: ticket created", "ref", ref, "iss", sess.Issuer, "org", sess.OrgID, "contact_id", sess.ContactID, "files", len(files))
 	return s.redirect(r, basePath+"/"+ref)
 }
 
@@ -351,12 +372,24 @@ func (s *Service) Reply(r *fastglue.Request) error {
 		return s.renderError(r, fasthttp.StatusNotFound, "We couldn't find that ticket.")
 	}
 	body := strings.TrimSpace(string(r.RequestCtx.FormValue("message")))
-	if body == "" || len(body) > maxMessageLen {
-		return s.redirect(r, basePath+"/"+t.ReferenceNumber)
+	files, problem := s.readUploads(r)
+	switch {
+	case problem != "":
+	case body == "" && len(files) == 0:
+		problem = "Please write a reply or attach a file."
+	case len(body) > maxMessageLen:
+		problem = fmt.Sprintf("Please keep the reply under %d characters.", maxMessageLen)
 	}
-	if err := s.backend.AddReply(sess.ContactID, t.UUID, textToHTML(body)); err != nil {
+	if problem != "" {
+		return s.renderTicket(r, sess, t, problem, body)
+	}
+	html := ""
+	if body != "" {
+		html = textToHTML(body)
+	}
+	if err := s.backend.AddReply(sess.ContactID, t.UUID, html, files); err != nil {
 		s.lo.Error("my-tickets: adding reply", "error", err)
-		return s.renderError(r, fasthttp.StatusInternalServerError, "We couldn't send your reply. Please try again.")
+		return s.renderTicket(r, sess, t, "We couldn't send your reply. Please try again.", body)
 	}
 	// Back to the ticket, keeping the inbox filters the form carried.
 	back := url.Values{"sent": {"1"}}
@@ -439,7 +472,87 @@ func (s *Service) renderNewForm(r *fastglue.Request, sess Session, subject, body
 	return s.render(r, fasthttp.StatusOK, "new.html", map[string]any{
 		"S": sess, "Subject": subject, "Message": body, "Project": project, "Priority": priority, "Problem": problem,
 		"CanChoosePriority": PriorityEligible(sess.SupportTier, s.eligibleTiers), "Priorities": PriorityChoices,
+		"Uploads": s.uploadInfo(),
 	})
+}
+
+// uploadView describes the attachment limits for the forms; nil hides the file field.
+type uploadView struct {
+	MaxMB    int
+	MaxFiles int
+	Accept   string // the file input's accept attribute, e.g. ".pdf,.png"
+}
+
+func (s *Service) uploadInfo() *uploadView {
+	if s.uploadLimits == nil {
+		return nil
+	}
+	l := s.uploadLimits()
+	if len(l.Extensions) == 0 || l.MaxMB <= 0 {
+		return nil // nothing can be attached
+	}
+	v := &uploadView{MaxMB: l.MaxMB, MaxFiles: maxFiles}
+	if !contains(l.Extensions, "*") {
+		exts := make([]string, 0, len(l.Extensions))
+		for _, e := range l.Extensions {
+			exts = append(exts, "."+e)
+		}
+		v.Accept = strings.Join(exts, ",")
+	}
+	return v
+}
+
+// readUploads returns the files attached to a multipart form, checked against
+// libredesk's upload settings, or a problem to show the customer.
+func (s *Service) readUploads(r *fastglue.Request) ([]Upload, string) {
+	form, err := r.RequestCtx.MultipartForm()
+	if err != nil {
+		return nil, "" // not a multipart form: no files
+	}
+	var headers []*multipart.FileHeader
+	for _, fh := range form.File["files"] {
+		// Browsers send an empty part when no file was chosen.
+		if fh.Filename == "" && fh.Size == 0 {
+			continue
+		}
+		headers = append(headers, fh)
+	}
+	if len(headers) == 0 {
+		return nil, ""
+	}
+	if s.uploadLimits == nil {
+		return nil, "Attachments aren't available right now. Please send your message without them."
+	}
+	if len(headers) > maxFiles {
+		return nil, fmt.Sprintf("Please attach up to %d files.", maxFiles)
+	}
+	limits := s.uploadLimits()
+	maxBytes := int64(limits.MaxMB) << 20
+	files := make([]Upload, 0, len(headers))
+	for _, fh := range headers {
+		name := filepath.Base(fh.Filename)
+		ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(name)), ".")
+		switch {
+		case fh.Size <= 0:
+			return nil, fmt.Sprintf("%q is empty.", name)
+		case fh.Size > maxBytes:
+			return nil, fmt.Sprintf("%q is larger than %d MB.", name, limits.MaxMB)
+		case !contains(limits.Extensions, "*") && !contains(limits.Extensions, ext):
+			return nil, fmt.Sprintf("%q can't be attached: that file type isn't allowed.", name)
+		}
+		f, err := fh.Open()
+		if err != nil {
+			s.lo.Error("my-tickets: opening upload", "error", err)
+			return nil, "We couldn't read your attachment. Please try again."
+		}
+		data, err := io.ReadAll(io.LimitReader(f, maxBytes+1))
+		f.Close()
+		if err != nil || int64(len(data)) > maxBytes {
+			return nil, "We couldn't read your attachment. Please try again."
+		}
+		files = append(files, Upload{Name: name, ContentType: fh.Header.Get("Content-Type"), Data: data})
+	}
+	return files, ""
 }
 
 func (s *Service) sessionEnded(r *fastglue.Request) error {

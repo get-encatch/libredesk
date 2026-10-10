@@ -25,6 +25,7 @@ import (
 //	clock_leeway = "30s"
 //	tiers = [...]           # valid support_tier values
 //	priority_tiers = [...]  # tiers that may choose Express/Urgent
+//	allowed_extensions = [...]  # attachment types customers may upload (also limited by libredesk's setting)
 //
 // Issuer secrets come from the environment only, never config files:
 //
@@ -61,6 +62,7 @@ func initEncatchMyTickets(g *fastglue.Fastglue) {
 		ValidTiers:  ko.Strings("my_tickets.tiers"),
 	}
 	priorityTiers := ko.Strings("my_tickets.priority_tiers")
+	customerExts := ko.Strings("my_tickets.allowed_extensions") // empty: libredesk's setting alone
 
 	// A small pool of our own for the list queries; libredesk doesn't expose its DB handle.
 	var (
@@ -79,11 +81,18 @@ func initEncatchMyTickets(g *fastglue.Fastglue) {
 				Verifier: verifier,
 				Store:    mytickets.NewStore(app.redis, sessionTTL),
 				Backend: &mytickets.LibredeskBackend{
-					Users: app.user, Conversations: app.conversation, DB: db, InboxID: inboxID,
+					Users: app.user, Conversations: app.conversation, Media: app.media, DB: db, InboxID: inboxID,
 				},
 				EligibleTiers: priorityTiers,
 				SessionTTL:    sessionTTL,
 				Logger:        app.lo,
+				// Attachments follow libredesk's upload settings (Admin > General), narrowed
+				// to my_tickets.allowed_extensions: customers are less trusted than agents.
+				UploadLimits: func() mytickets.UploadLimits {
+					c := app.consts.Load().(*constants)
+					return mytickets.UploadLimits{MaxMB: c.MaxFileUploadSizeMB,
+						Extensions: mytickets.IntersectExtensions(c.AllowedUploadFileExtensions, customerExts)}
+				},
 			})
 			if err != nil {
 				app.lo.Error("my-tickets: init failed", "error", err)

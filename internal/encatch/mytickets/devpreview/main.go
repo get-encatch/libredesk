@@ -41,14 +41,20 @@ func main() {
 	}
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	lo := logf.New(logf.Opts{Level: logf.InfoLevel})
+	backend := newSampleBackend()
 	svc, err := mytickets.New(mytickets.Opts{
 		Verifier: &mytickets.Verifier{Secrets: map[string][]string{"preview": {secret}},
 			MaxLifetime: time.Minute, Leeway: 30 * time.Second, ValidTiers: tiers},
 		Store:         mytickets.NewStore(rdb, 8*time.Hour),
-		Backend:       newSampleBackend(),
+		Backend:       backend,
 		EligibleTiers: []string{"Growth Plus", "Enterprise Standard", "Enterprise Premium"},
 		SessionTTL:    8 * time.Hour,
 		Logger:        &lo,
+		UploadLimits: func() mytickets.UploadLimits {
+			// Same customer allowlist as deploy/config.toml (my_tickets.allowed_extensions).
+			return mytickets.UploadLimits{MaxMB: 10, Extensions: []string{"png", "jpg", "jpeg", "gif", "webp", "heic", "pdf", "txt", "log",
+				"csv", "json", "xml", "md", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "zip", "mp4", "mov", "webm", "mp3", "m4a", "wav", "har"}}
+		},
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -65,6 +71,7 @@ func main() {
 	g.POST("/my-tickets/new", svc.Create)
 	g.GET("/my-tickets/{ref}", svc.View)
 	g.POST("/my-tickets/{ref}/reply", svc.Reply)
+	g.GET("/preview-uploads/{id}", backend.serveUpload)
 	// The Geist font, as libredesk serves it.
 	fonts := fasthttp.FSHandler(repoRoot()+"/static/public/static", 3)
 	g.GET("/static/public/static/{path:*}", func(r *fastglue.Request) error { fonts(r.RequestCtx); return nil })
@@ -129,11 +136,12 @@ type sampleBackend struct {
 	names    map[int]string
 	tickets  map[string]*mytickets.TicketSummary
 	msgs     map[string][]mytickets.Message
+	files    map[string]mytickets.Upload // uploaded attachments, served at /preview-uploads/{id}
 	next     int
 }
 
 func newSampleBackend() *sampleBackend {
-	b := &sampleBackend{contacts: map[string]int{"1": 1, "2": 2, "3": 3}, names: map[int]string{1: "Anita Rao", 2: "Ravi Kumar", 3: "Meera Shah"},
+	b := &sampleBackend{files: map[string]mytickets.Upload{}, contacts: map[string]int{"1": 1, "2": 2, "3": 3}, names: map[int]string{1: "Anita Rao", 2: "Ravi Kumar", 3: "Meera Shah"},
 		tickets: map[string]*mytickets.TicketSummary{}, msgs: map[string][]mytickets.Message{}, next: 140}
 	ago := func(h int) time.Time { return time.Now().Add(-time.Duration(h) * time.Hour) }
 	add := func(ref string, contact int, subject, status, project, projectName string, created, updated time.Time, msgs ...mytickets.Message) {
@@ -208,6 +216,35 @@ func (b *sampleBackend) ListTickets(q mytickets.ListQuery) ([]mytickets.TicketSu
 	return out, nil
 }
 
+// keep stores uploaded files in memory and returns their attachment links.
+func (b *sampleBackend) keep(files []mytickets.Upload) []mytickets.Attachment {
+	var out []mytickets.Attachment
+	for _, f := range files {
+		b.next++
+		id := fmt.Sprint(b.next)
+		b.files[id] = f
+		out = append(out, mytickets.Attachment{Name: f.Name, URL: "/preview-uploads/" + id})
+		log.Printf("preview: stored attachment %q (%d bytes)", f.Name, len(f.Data))
+	}
+	return out
+}
+
+// serveUpload returns a stored attachment as a download.
+func (b *sampleBackend) serveUpload(r *fastglue.Request) error {
+	b.mu.Lock()
+	f, ok := b.files[r.RequestCtx.UserValue("id").(string)]
+	b.mu.Unlock()
+	if !ok {
+		r.RequestCtx.SetStatusCode(fasthttp.StatusNotFound)
+		return nil
+	}
+	r.RequestCtx.Response.Header.Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", f.Name))
+	r.RequestCtx.Response.Header.Set("X-Content-Type-Options", "nosniff")
+	r.RequestCtx.SetContentType("application/octet-stream")
+	r.RequestCtx.SetBody(f.Data)
+	return nil
+}
+
 // strict strips sample message HTML down to text for list previews.
 var strict = bluemonday.StrictPolicy()
 
@@ -237,7 +274,7 @@ func (b *sampleBackend) Messages(uuid string) ([]mytickets.Message, error) {
 	return append([]mytickets.Message(nil), b.msgs[uuid]...), nil
 }
 
-func (b *sampleBackend) CreateTicket(contactID int, subject, html string, attrs map[string]any) (string, error) {
+func (b *sampleBackend) CreateTicket(contactID int, subject, html string, attrs map[string]any, files []mytickets.Upload) (string, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.next++
@@ -247,15 +284,15 @@ func (b *sampleBackend) CreateTicket(contactID int, subject, html string, attrs 
 	pname, _ := attrs[mytickets.AttrProjectName].(string)
 	b.tickets[ref] = &mytickets.TicketSummary{UUID: "u" + ref, ReferenceNumber: ref, Subject: subject + " - #" + ref, InternalStatus: "Open",
 		ContactID: contactID, RaisedBy: b.names[contactID], OrgID: fmt.Sprint(attrs[mytickets.AttrOrgID]), ProjectID: pid, ProjectName: pname, CreatedAt: now, UpdatedAt: now}
-	b.msgs["u"+ref] = []mytickets.Message{{FromCustomer: true, AuthorName: b.names[contactID], HTML: html, CreatedAt: now}}
+	b.msgs["u"+ref] = []mytickets.Message{{FromCustomer: true, AuthorName: b.names[contactID], HTML: html, CreatedAt: now, Attachments: b.keep(files)}}
 	log.Printf("preview: created #%s with attrs %v", ref, attrs)
 	return ref, nil
 }
 
-func (b *sampleBackend) AddReply(contactID int, uuid, html string) error {
+func (b *sampleBackend) AddReply(contactID int, uuid, html string, files []mytickets.Upload) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.msgs[uuid] = append(b.msgs[uuid], mytickets.Message{FromCustomer: true, AuthorName: b.names[contactID], HTML: html, CreatedAt: time.Now()})
+	b.msgs[uuid] = append(b.msgs[uuid], mytickets.Message{FromCustomer: true, AuthorName: b.names[contactID], HTML: html, CreatedAt: time.Now(), Attachments: b.keep(files)})
 	for _, t := range b.tickets {
 		if t.UUID == uuid {
 			t.UpdatedAt = time.Now()

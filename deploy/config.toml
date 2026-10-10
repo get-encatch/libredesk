@@ -203,3 +203,7 @@ max_token_lifetime = "60s"
 clock_leeway = "30s"
 tiers = ["SaaS Standard", "SaaS Growth", "Growth Plus", "Enterprise Standard", "Enterprise Premium"]
 priority_tiers = ["Growth Plus", "Enterprise Standard", "Enterprise Premium"]
+# File types customers may attach. A file must also be allowed by libredesk's own
+# setting (Admin > General > allowed file extensions). No executables, HTML, SVG or scripts.
+allowed_extensions = ["png", "jpg", "jpeg", "gif", "webp", "heic", "pdf", "txt", "log", "csv", "json", "xml", "md",
+  "doc", "docx", "xls", "xlsx", "ppt", "pptx", "zip", "mp4", "mov", "webm", "mp3", "m4a", "wav", "har"]

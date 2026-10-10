@@ -4,16 +4,25 @@ package mytickets
 // merge changes a signature used here, the build fails in this file and nowhere else.
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/abhinavxd/libredesk/internal/attachment"
 	"github.com/abhinavxd/libredesk/internal/conversation"
 	cmodels "github.com/abhinavxd/libredesk/internal/conversation/models"
+	"github.com/abhinavxd/libredesk/internal/image"
+	"github.com/abhinavxd/libredesk/internal/media"
+	mmodels "github.com/abhinavxd/libredesk/internal/media/models"
+	"github.com/abhinavxd/libredesk/internal/stringutil"
 	"github.com/abhinavxd/libredesk/internal/user"
 	umodels "github.com/abhinavxd/libredesk/internal/user/models"
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
 	"github.com/volatiletech/null/v9"
@@ -23,6 +32,7 @@ import (
 type LibredeskBackend struct {
 	Users         *user.Manager
 	Conversations *conversation.Manager
+	Media         *media.Manager
 	DB            *sqlx.DB
 	InboxID       int
 }
@@ -205,13 +215,32 @@ func (b *LibredeskBackend) Messages(uuid string) ([]Message, error) {
 		if m.Private || (m.Type != cmodels.MessageIncoming && m.Type != cmodels.MessageOutgoing) {
 			continue
 		}
+		// The message list has no attachment URLs; sign them as the agent API does
+		// (cmd/messages.go), and point inline cid: images at the same signed URLs.
+		b.Conversations.SignAttachmentURLs(m.Attachments)
+		content := m.Content
+		for _, a := range m.Attachments {
+			if a.ContentID != "" && a.URL != "" {
+				content = strings.ReplaceAll(content, "cid:"+a.ContentID, relativeURL(a.URL))
+			}
+		}
+		if b.Media != nil {
+			if refs, err := b.Conversations.GetInlineMediaRefs(&m); err == nil { // images quoted from earlier messages
+				for _, ref := range refs {
+					content = strings.ReplaceAll(content, "cid:"+ref.ContentID, relativeURL(b.Media.GetURL(ref.UUID, ref.ContentType, ref.Filename)))
+				}
+			}
+		}
 		msg := Message{
 			FromCustomer: m.Type == cmodels.MessageIncoming,
 			AuthorName:   strings.TrimSpace(m.Author.FirstName + " " + m.Author.LastName),
-			HTML:         m.Content,
+			HTML:         content,
 			CreatedAt:    m.CreatedAt,
 		}
 		for _, a := range m.Attachments {
+			if a.URL == "" || (a.Disposition == attachment.DispositionInline && a.ContentID != "" && strings.Contains(m.Content, "cid:"+a.ContentID)) {
+				continue // inline images already show in the message body
+			}
 			msg.Attachments = append(msg.Attachments, Attachment{Name: a.Name, URL: relativeURL(a.URL)})
 		}
 		out = append(out, msg)
@@ -223,30 +252,110 @@ func (b *LibredeskBackend) Messages(uuid string) ([]Message, error) {
 	return out, nil
 }
 
-func (b *LibredeskBackend) CreateTicket(contactID int, subject, html string, attrs map[string]any) (string, error) {
-	_, uuid, err := b.Conversations.CreateConversation(contactID, b.InboxID, "", time.Now(), subject,
+func (b *LibredeskBackend) CreateTicket(contactID int, subject, html string, attrs map[string]any, files []Upload) (string, error) {
+	// Store files first, so a failed upload doesn't leave a ticket behind.
+	stored, err := b.storeUploads(files)
+	if err != nil {
+		return "", err
+	}
+	_, convUUID, err := b.Conversations.CreateConversation(contactID, b.InboxID, "", time.Now(), subject,
 		true /* append reference number to subject */, nil, attrs, 0, 0)
 	if err != nil {
+		b.deleteUploads(stored)
 		return "", fmt.Errorf("creating ticket: %w", err)
 	}
 	// A contact message on a new conversation runs the same hooks as an incoming email:
 	// new-ticket automation rules (tier SLA, team assignment) and SLA tracking.
-	if _, err := b.Conversations.CreateContactMessage(nil, contactID, uuid, html, cmodels.ContentTypeHTML, true); err != nil {
-		_ = b.Conversations.DeleteConversation(uuid)
+	if _, err := b.Conversations.CreateContactMessage(stored, contactID, convUUID, html, cmodels.ContentTypeHTML, true); err != nil {
+		_ = b.Conversations.DeleteConversation(convUUID)
+		b.deleteUploads(stored)
 		return "", fmt.Errorf("creating first message: %w", err)
 	}
-	c, err := b.Conversations.GetConversation(0, uuid, "")
+	c, err := b.Conversations.GetConversation(0, convUUID, "")
 	if err != nil {
 		return "", fmt.Errorf("loading new ticket: %w", err)
 	}
 	return c.ReferenceNumber, nil
 }
 
-func (b *LibredeskBackend) AddReply(contactID int, uuid, html string) error {
-	if _, err := b.Conversations.CreateContactMessage(nil, contactID, uuid, html, cmodels.ContentTypeHTML, false); err != nil {
+func (b *LibredeskBackend) AddReply(contactID int, convUUID, html string, files []Upload) error {
+	stored, err := b.storeUploads(files)
+	if err != nil {
+		return err
+	}
+	if _, err := b.Conversations.CreateContactMessage(stored, contactID, convUUID, html, cmodels.ContentTypeHTML, false); err != nil {
+		b.deleteUploads(stored)
 		return fmt.Errorf("adding reply: %w", err)
 	}
 	return nil
+}
+
+// storeUploads saves customer files the way the agent app's media upload does
+// (cmd/media.go): private media rows named by UUID, with a thumbnail for images.
+// CreateContactMessage then links them to the message.
+func (b *LibredeskBackend) storeUploads(files []Upload) ([]mmodels.Media, error) {
+	stored := make([]mmodels.Media, 0, len(files))
+	for _, f := range files {
+		m, err := b.storeUpload(f)
+		if err != nil {
+			b.deleteUploads(stored)
+			return nil, err
+		}
+		stored = append(stored, m)
+	}
+	return stored, nil
+}
+
+func (b *LibredeskBackend) storeUpload(f Upload) (mmodels.Media, error) {
+	if b.Media == nil {
+		return mmodels.Media{}, fmt.Errorf("attachments are not configured")
+	}
+	name := stringutil.SanitizeFilename(f.Name)
+	ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(name)), ".")
+	id := uuid.New().String()
+	thumb := image.ThumbPrefix + id
+
+	meta := []byte("{}")
+	isImage := slices.Contains(image.Exts, ext) && image.IsImageByContent(bytes.NewReader(f.Data))
+	if isImage {
+		t, err := image.CreateThumb(image.DefThumbSize, bytes.NewReader(f.Data))
+		if err != nil {
+			return mmodels.Media{}, fmt.Errorf("creating thumbnail: %w", err)
+		}
+		if _, _, err := b.Media.Upload(thumb, f.ContentType, t); err != nil {
+			return mmodels.Media{}, fmt.Errorf("uploading thumbnail: %w", err)
+		}
+		if w, h, err := image.GetDimensions(bytes.NewReader(f.Data)); err == nil {
+			meta, _ = json.Marshal(map[string]int{"width": w, "height": h})
+		}
+	}
+	// Upload detects the real content type from the bytes.
+	_, contentType, err := b.Media.Upload(id, f.ContentType, bytes.NewReader(f.Data))
+	if err != nil {
+		if isImage {
+			_ = b.Media.Delete(thumb)
+		}
+		return mmodels.Media{}, fmt.Errorf("uploading attachment: %w", err)
+	}
+	m, err := b.Media.Insert(null.StringFrom(attachment.DispositionAttachment), name, contentType, "",
+		null.String{}, id, null.Int{}, len(f.Data), meta, true /* private: signed links only */)
+	if err != nil {
+		_ = b.Media.Delete(id)
+		if isImage {
+			_ = b.Media.Delete(thumb)
+		}
+		return mmodels.Media{}, fmt.Errorf("saving attachment: %w", err)
+	}
+	return m, nil
+}
+
+// deleteUploads removes stored files after a failure. Libredesk also cleans up
+// media that never got linked to a message.
+func (b *LibredeskBackend) deleteUploads(stored []mmodels.Media) {
+	for _, m := range stored {
+		_ = b.Media.Delete(m.UUID)
+		_ = b.Media.Delete(image.ThumbPrefix + m.UUID)
+	}
 }
 
 func attrString(attrs map[string]any, key string) string {

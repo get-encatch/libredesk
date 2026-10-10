@@ -142,6 +142,12 @@
   .composer textarea { @apply block w-full resize-none bg-transparent px-3 pt-3 text-sm placeholder:text-muted-foreground focus:outline-none; }
   .details { @apply hidden w-72 shrink-0 overflow-y-auto border-l px-5 py-5 xl:block; }
   .details-label { @apply text-xs font-medium uppercase tracking-wide text-muted-foreground; }
+  /* Attachments */
+  .file-input { @apply flex w-full cursor-pointer rounded-md border border-input bg-transparent px-3 py-1.5 text-sm text-muted-foreground file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1 file:text-sm file:font-medium file:text-secondary-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring; }
+  .composer-attach { @apply flex min-w-0 max-w-full items-center gap-1 text-muted-foreground; }
+  .composer-file { @apply min-w-0 max-w-[16rem] cursor-pointer text-xs file:mr-2 file:cursor-pointer file:rounded-md file:border file:border-solid file:border-input file:bg-background file:px-2 file:py-1 file:text-xs file:font-medium file:text-foreground hover:file:bg-accent; }
+  .file-chip { @apply inline-flex max-w-[16rem] items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-accent; }
+  .file-chip .icon { @apply h-3.5 w-3.5 text-muted-foreground; }
   .mail-dot { @apply h-2 w-2 shrink-0 rounded-full bg-primary; }
   .avatar-xs { @apply h-5 w-5 rounded-full text-[10px]; }
   .avatar-muted { @apply bg-muted text-muted-foreground; }

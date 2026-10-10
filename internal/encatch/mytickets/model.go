@@ -1,6 +1,7 @@
 package mytickets
 
 import (
+	"slices"
 	"strings"
 	"time"
 )
@@ -95,6 +96,49 @@ type TicketSummary struct {
 	Preview          string
 }
 
+// Upload is a file a customer attached to a new ticket or a reply. Handlers
+// check it against the upload limits before the backend stores it.
+type Upload struct {
+	Name        string
+	ContentType string
+	Data        []byte
+}
+
+// UploadLimits are libredesk's upload settings (Admin > General), read per request.
+type UploadLimits struct {
+	MaxMB      int
+	Extensions []string // lowercase, without dots; "*" allows any
+}
+
+// IntersectExtensions returns the file extensions allowed by both lists
+// (lowercase, without dots). "*" in a list allows anything; an empty
+// customer list means no extra restriction.
+func IntersectExtensions(libredesk, customer []string) []string {
+	norm := func(list []string) []string {
+		out := make([]string, 0, len(list))
+		for _, e := range list {
+			if e = strings.ToLower(strings.TrimPrefix(strings.TrimSpace(e), ".")); e != "" {
+				out = append(out, e)
+			}
+		}
+		return out
+	}
+	ld, cu := norm(libredesk), norm(customer)
+	switch {
+	case len(cu) == 0 || slices.Contains(cu, "*"):
+		return ld
+	case slices.Contains(ld, "*"):
+		return cu
+	}
+	var out []string
+	for _, e := range cu {
+		if slices.Contains(ld, e) {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
 // maxPreview is the longest list preview, in runes.
 const maxPreview = 240
 
@@ -168,7 +212,7 @@ type Backend interface {
 	// Messages returns the customer-visible messages of a ticket, oldest first.
 	Messages(uuid string) ([]Message, error)
 	// CreateTicket creates a contact-initiated ticket and returns its reference number.
-	CreateTicket(contactID int, subject, html string, attrs map[string]any) (string, error)
+	CreateTicket(contactID int, subject, html string, attrs map[string]any, files []Upload) (string, error)
 	// AddReply adds a customer reply to a ticket.
-	AddReply(contactID int, uuid, html string) error
+	AddReply(contactID int, uuid, html string, files []Upload) error
 }

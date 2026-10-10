@@ -7,7 +7,7 @@
 
 {{if .Problem}}<div class="alert alert-destructive mb-4" role="alert">{{.Problem}}</div>{{end}}
 
-<form class="card" method="post" action="/my-tickets/new">
+<form class="card" method="post" action="/my-tickets/new"{{if .Uploads}} enctype="multipart/form-data"{{end}}>
   <div class="card-content space-y-6 pt-6">
     <input type="hidden" name="csrf" value="{{.S.CSRF}}">
     {{if .S.Projects}}
@@ -31,6 +31,13 @@
       <textarea id="message" name="message" class="textarea min-h-[180px]" required maxlength="20000">{{.Message}}</textarea>
       <p class="text-xs text-muted-foreground">For bugs, include the steps to reproduce, what you expected, and the SDK and version.</p>
     </div>
+    {{with .Uploads}}
+    <div class="space-y-2">
+      <label for="files" class="label">Attachments <span class="font-normal text-muted-foreground">(optional)</span></label>
+      <input type="file" id="files" name="files" multiple class="file-input"{{if .Accept}} accept="{{.Accept}}"{{end}}>
+      <p class="text-xs text-muted-foreground">Screenshots, logs or recordings help. Up to {{.MaxFiles}} files, {{.MaxMB}} MB each.</p>
+    </div>
+    {{end}}
     {{if .CanChoosePriority}}
     <fieldset class="space-y-3">
       <legend class="label">Priority</legend>

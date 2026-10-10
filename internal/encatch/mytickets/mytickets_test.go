@@ -1,9 +1,12 @@
 package mytickets
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"mime/multipart"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -175,6 +178,7 @@ type fakeBackend struct {
 	tickets  map[string]TicketSummary
 	attrs    map[string]map[string]any
 	msgs     map[string][]Message
+	files    []Upload
 }
 
 func newFake() *fakeBackend {
@@ -209,17 +213,19 @@ func (f *fakeBackend) GetTicket(ref string) (TicketSummary, error) {
 	return t, nil
 }
 func (f *fakeBackend) Messages(uuid string) ([]Message, error) { return f.msgs[uuid], nil }
-func (f *fakeBackend) CreateTicket(contactID int, subject, html string, attrs map[string]any) (string, error) {
+func (f *fakeBackend) CreateTicket(contactID int, subject, html string, attrs map[string]any, files []Upload) (string, error) {
 	ref := fmt.Sprint(100 + len(f.tickets))
 	uuid := "u" + ref
 	f.tickets[ref] = TicketSummary{UUID: uuid, ReferenceNumber: ref, Subject: subject, InternalStatus: "Open", ContactID: contactID,
 		OrgID: fmt.Sprint(attrs[AttrOrgID]), ProjectID: fmt.Sprint(attrs[AttrProjectID]), RaisedBy: "Anita Rao"}
 	f.attrs[ref] = attrs
 	f.msgs[uuid] = []Message{{FromCustomer: true, AuthorName: "Anita Rao", HTML: html + `<script>alert(1)</script>`}}
+	f.files = append(f.files, files...)
 	return ref, nil
 }
-func (f *fakeBackend) AddReply(contactID int, uuid, html string) error {
+func (f *fakeBackend) AddReply(contactID int, uuid, html string, files []Upload) error {
 	f.msgs[uuid] = append(f.msgs[uuid], Message{FromCustomer: true, HTML: html})
+	f.files = append(f.files, files...)
 	return nil
 }
 
@@ -235,7 +241,8 @@ func newHarness(t *testing.T) *harness {
 	lo := logf.New(logf.Opts{Level: logf.ErrorLevel})
 	be := newFake()
 	svc, err := New(Opts{Verifier: testVerifier(), Store: NewStore(rdb, 8*time.Hour), Backend: be,
-		EligibleTiers: []string{"Growth Plus", "Enterprise Standard", "Enterprise Premium"}, SessionTTL: 8 * time.Hour, Logger: &lo})
+		EligibleTiers: []string{"Growth Plus", "Enterprise Standard", "Enterprise Premium"}, SessionTTL: 8 * time.Hour, Logger: &lo,
+		UploadLimits: func() UploadLimits { return UploadLimits{MaxMB: 1, Extensions: []string{"pdf", "png", "txt"}} }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -441,5 +448,118 @@ func TestClip(t *testing.T) {
 	got := Clip(long)
 	if n := len([]rune(got)); n > maxPreview+1 || !strings.HasSuffix(got, "…") {
 		t.Errorf("Clip long: %d runes, %q", n, got[len(got)-10:])
+	}
+}
+
+type testFile struct {
+	field, name string
+	data        []byte
+}
+
+// doMultipart posts a multipart form like a browser does.
+func (h *harness) doMultipart(handler func(*fastglue.Request) error, uri, cookie string, fields map[string]string, files []testFile, userValues map[string]string) *fasthttp.Response {
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	for k, v := range fields {
+		_ = w.WriteField(k, v)
+	}
+	for _, f := range files {
+		part, _ := w.CreateFormFile(f.field, f.name)
+		_, _ = part.Write(f.data)
+	}
+	_ = w.Close()
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod("POST")
+	ctx.Request.SetRequestURI(uri)
+	ctx.Request.Header.SetCookie(cookieName, cookie)
+	ctx.Request.Header.SetContentType(w.FormDataContentType())
+	ctx.Request.SetBody(buf.Bytes())
+	for k, v := range userValues {
+		ctx.SetUserValue(k, v)
+	}
+	if err := handler(&fastglue.Request{RequestCtx: ctx}); err != nil {
+		h.t.Fatalf("handler error: %v", err)
+	}
+	resp := &fasthttp.Response{}
+	ctx.Response.CopyTo(resp)
+	return resp
+}
+
+func TestUploads(t *testing.T) {
+	h := newHarness(t)
+	resp := h.do(h.svc.Login, "GET", "/my-tickets/login?token="+sign(t, "current-secret", baseClaims()), "", "", nil)
+	sid := sessionCookie(t, resp)
+	sess, _ := h.svc.store.Get(context.Background(), sid)
+	fields := map[string]string{"csrf": sess.CSRF, "subject": "Crash on export", "message": "See attached"}
+	pdf := testFile{"files", "report.pdf", []byte("%PDF-1.4 test")}
+
+	// The new-ticket form shows the file field with the allowed types.
+	if body := string(h.do(h.svc.NewForm, "GET", "/my-tickets/new", sid, "", nil).Body()); !strings.Contains(body, `enctype="multipart/form-data"`) || !strings.Contains(body, `accept=".pdf,.png,.txt"`) {
+		t.Fatalf("new form lacks the file field: %s", body)
+	}
+
+	// Rejected uploads keep the form and create nothing.
+	for name, files := range map[string][]testFile{
+		"type":  {{"files", "setup.exe", []byte("MZ")}},
+		"size":  {{"files", "big.pdf", bytes.Repeat([]byte("a"), 1<<20+1)}},
+		"count": {pdf, pdf, pdf, pdf, pdf, pdf},
+		"empty": {{"files", "empty.txt", nil}},
+	} {
+		resp := h.doMultipart(h.svc.Create, "/my-tickets/new", sid, fields, files, nil)
+		if resp.StatusCode() != fasthttp.StatusOK || !strings.Contains(string(resp.Body()), "alert-destructive") ||
+			!strings.Contains(string(resp.Body()), "Crash on export") || len(h.be.tickets) != 0 {
+			t.Fatalf("%s: status %d, tickets %d", name, resp.StatusCode(), len(h.be.tickets))
+		}
+	}
+
+	// Valid files are passed to the backend; an unchosen file input (empty part) is ignored,
+	// and a path in the filename is dropped.
+	resp = h.doMultipart(h.svc.Create, "/my-tickets/new", sid, fields,
+		[]testFile{pdf, {"files", "../../etc/notes.txt", []byte("hello")}, {"files", "", nil}}, nil)
+	if resp.StatusCode() != fasthttp.StatusSeeOther || len(h.be.files) != 2 {
+		t.Fatalf("create with files: %d, files %d, body %s", resp.StatusCode(), len(h.be.files), resp.Body())
+	}
+	if h.be.files[0].Name != "report.pdf" || string(h.be.files[0].Data) != "%PDF-1.4 test" || h.be.files[1].Name != "notes.txt" {
+		t.Fatalf("stored files = %+v", h.be.files)
+	}
+
+	// A reply may be just a file.
+	ref := strings.TrimPrefix(string(resp.Header.Peek("Location")), "/my-tickets/")
+	reply := map[string]string{"csrf": sess.CSRF, "message": ""}
+	resp = h.doMultipart(h.svc.Reply, "/my-tickets/"+ref+"/reply", sid, reply, []testFile{{"files", "shot.png", []byte("png")}}, map[string]string{"ref": ref})
+	if resp.StatusCode() != fasthttp.StatusSeeOther || len(h.be.files) != 3 {
+		t.Fatalf("file-only reply: %d, files %d", resp.StatusCode(), len(h.be.files))
+	}
+
+	// An empty reply, or a bad file, shows the problem on the ticket and keeps the draft.
+	resp = h.doMultipart(h.svc.Reply, "/my-tickets/"+ref+"/reply", sid, reply, nil, map[string]string{"ref": ref})
+	if !strings.Contains(string(resp.Body()), "Please write a reply or attach a file.") {
+		t.Fatalf("empty reply: %d %s", resp.StatusCode(), resp.Body())
+	}
+	reply["message"] = "Keep this draft"
+	resp = h.doMultipart(h.svc.Reply, "/my-tickets/"+ref+"/reply", sid, reply, []testFile{{"files", "x.exe", []byte("MZ")}}, map[string]string{"ref": ref})
+	if body := string(resp.Body()); !strings.Contains(body, "file type isn") || !strings.Contains(body, ">Keep this draft</textarea>") || len(h.be.files) != 3 {
+		t.Fatalf("bad file reply: %d files %d %s", resp.StatusCode(), len(h.be.files), body)
+	}
+
+	// Multipart posts still need the CSRF token.
+	if resp := h.doMultipart(h.svc.Reply, "/my-tickets/"+ref+"/reply", sid, map[string]string{"message": "x"}, []testFile{pdf}, map[string]string{"ref": ref}); resp.StatusCode() != fasthttp.StatusForbidden {
+		t.Fatalf("multipart without csrf: %d", resp.StatusCode())
+	}
+}
+
+func TestIntersectExtensions(t *testing.T) {
+	for _, c := range []struct {
+		ld, cu, want []string
+	}{
+		{[]string{"*"}, []string{"PDF", ".png"}, []string{"pdf", "png"}},
+		{[]string{"pdf", "exe"}, []string{"pdf", "png"}, []string{"pdf"}},
+		{[]string{"pdf"}, nil, []string{"pdf"}},
+		{[]string{"*"}, nil, []string{"*"}},
+		{[]string{"zip"}, []string{"pdf"}, nil},
+	} {
+		if got := IntersectExtensions(c.ld, c.cu); !slices.Equal(got, c.want) {
+			t.Errorf("IntersectExtensions(%v, %v) = %v, want %v", c.ld, c.cu, got, c.want)
+		}
 	}
 }
