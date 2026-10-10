@@ -75,6 +75,9 @@ func NewDispatcher(opts DispatcherOpts) *Dispatcher {
 // For each recipient: creates in-app notification (DB), broadcasts via Websocket,
 // and sends email if Email field is provided.
 func (d *Dispatcher) Send(n Notification) {
+	if !encatchMayNotify(n) { // encatch: not for tickets from Encatch test instances (encatch.go)
+		return
+	}
 	for i, recipientID := range n.RecipientIDs {
 		d.sendToRecipient(recipientID, n)
 
@@ -95,6 +98,9 @@ func (d *Dispatcher) Send(n Notification) {
 // SendWithEmails sends notifications where each recipient has their own email content.
 // This is useful when email content is personalized per recipient.
 func (d *Dispatcher) SendWithEmails(n Notification, emails []EmailNotification) {
+	if !encatchMayNotify(n) { // encatch: not for tickets from Encatch test instances (encatch.go)
+		return
+	}
 	for i, recipientID := range n.RecipientIDs {
 		d.sendToRecipient(recipientID, n)
 

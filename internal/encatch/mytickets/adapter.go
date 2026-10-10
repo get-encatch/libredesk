@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"net/url"
 	"path/filepath"
 	"slices"
@@ -19,6 +20,7 @@ import (
 	amodels "github.com/abhinavxd/libredesk/internal/automation/models"
 	"github.com/abhinavxd/libredesk/internal/conversation"
 	cmodels "github.com/abhinavxd/libredesk/internal/conversation/models"
+	"github.com/abhinavxd/libredesk/internal/encatch/instancegate"
 	"github.com/abhinavxd/libredesk/internal/encatch/orgtiers"
 	"github.com/abhinavxd/libredesk/internal/image"
 	"github.com/abhinavxd/libredesk/internal/media"
@@ -44,6 +46,9 @@ type LibredeskBackend struct {
 	Logger        *logf.Logger
 	// libredesk's conversation.subject_ref_format, to show subjects without the number.
 	SubjectRefFormat string
+	// Per-instance gates (internal/encatch/instancegate); tickets they stop get a note
+	// for agents saying so.
+	EmailGate, NotifyGate *instancegate.Gate
 }
 
 // orgActivityIndex serves the ticket list: one org's tickets, latest customer-visible
@@ -341,6 +346,9 @@ func (b *LibredeskBackend) CreateTicket(contactID int, subject, html string, att
 	if err := b.addTags(convUUID, tags); err != nil {
 		b.Logger.Error("my tickets: tagging new ticket", "uuid", convUUID, "tags", tags, "error", err)
 	}
+	if err := b.noteGated(convUUID, attrString(attrs, AttrInstance)); err != nil {
+		b.Logger.Error("my tickets: adding the gated-messages note", "uuid", convUUID, "error", err)
+	}
 	// A contact message on a new conversation runs the same hooks as an incoming email:
 	// new-ticket automation rules (tier SLA, team assignment) and SLA tracking.
 	if _, err := b.Conversations.CreateContactMessage(stored, contactID, convUUID, html, cmodels.ContentTypeHTML, true); err != nil {
@@ -353,6 +361,29 @@ func (b *LibredeskBackend) CreateTicket(contactID int, subject, html string, att
 		return "", fmt.Errorf("loading new ticket: %w", err)
 	}
 	return c.ReferenceNumber, nil
+}
+
+// noteGated tells agents, in a private note, which messages this ticket won't send because
+// of its Encatch instance. Nothing is added when nothing is gated.
+func (b *LibredeskBackend) noteGated(convUUID, instance string) error {
+	var off []string
+	if !b.EmailGate.AllowsInstance(instance) {
+		off = append(off, "its customer isn't emailed (replies show in My Tickets only)")
+	}
+	if !b.NotifyGate.AllowsInstance(instance) {
+		off = append(off, "agents get no notifications for it")
+	}
+	if len(off) == 0 {
+		return nil
+	}
+	system, err := b.Users.GetSystemUser()
+	if err != nil {
+		return fmt.Errorf("loading System agent: %w", err)
+	}
+	note := fmt.Sprintf("<p>This ticket came from the Encatch <strong>%s</strong> instance, so %s.</p>",
+		template.HTMLEscapeString(instance), template.HTMLEscapeString(strings.Join(off, ", and ")))
+	_, err = b.Conversations.SendPrivateNote(nil, system.ID, convUUID, note, nil)
+	return err
 }
 
 // addTags adds tags to a conversation as the System agent, creating missing tags. It

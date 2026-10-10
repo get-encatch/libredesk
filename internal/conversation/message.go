@@ -185,8 +185,10 @@ func (m *Manager) sendOutgoingMessage(message models.Message) {
 		outbound.References, outbound.InReplyTo = m.BuildEmailThreadingHeaders(message.ConversationID, outbound.SourceID)
 	}
 
-	// Send message
-	err = inb.Send(outbound)
+	// Send message. encatch: no email for tickets from Encatch test instances (encatch.go).
+	if encatchMayEmail(message.ConversationID, inb.Channel()) {
+		err = inb.Send(outbound)
+	}
 	if err != nil && err != livechat.ErrClientNotConnected {
 		handleError(err, "error sending message")
 		return

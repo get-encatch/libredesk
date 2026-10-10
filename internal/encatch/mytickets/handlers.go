@@ -60,9 +60,9 @@ const (
 	// Messages per page of a ticket's thread. Long email replies quote whole threads,
 	// so a page is kept small; "Show earlier messages" loads the next ten.
 	messagesPerPage = 10
-	maxPage        = 200 // 10,000 tickets deep; past that, search
-	maxSearchLen   = 100
-	maxFiles       = 5 // attachments per ticket or reply
+	maxPage         = 200 // 10,000 tickets deep; past that, search
+	maxSearchLen    = 100
+	maxFiles        = 5 // attachments per ticket or reply
 )
 
 // Service holds My Tickets' dependencies and serves its pages.

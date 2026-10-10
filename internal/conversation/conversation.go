@@ -1196,6 +1196,10 @@ func (m *Manager) SendTransientEmail(inboxID, conversationID int, conversationUU
 	if inb.Channel() != inbox.ChannelEmail {
 		return fmt.Errorf("cannot send email through non-email inbox %d", inboxID)
 	}
+	// encatch: AI agent emails only for allowed Encatch instances (encatch.go).
+	if !encatchMayAIEmail(conversationID) {
+		return fmt.Errorf("AI agent emails are off for tickets from this Encatch instance")
+	}
 	references, inReplyTo := m.BuildEmailThreadingHeaders(conversationID, "")
 	return inb.Send(models.OutboundMessage{
 		From:             inb.FromAddress(),

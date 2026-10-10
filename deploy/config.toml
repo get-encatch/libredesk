@@ -202,6 +202,13 @@ enabled = true
 # Email inbox new tickets are created in (Encatch Support).
 inbox_id = 1
 session_ttl = "2h"
+# Per Encatch instance: whose tickets send each kind of message, so testing from local, dev
+# or uat mails no real customer. Tickets without an instance (email) are never gated. Remove
+# a setting to stop gating that kind; an empty list allows no instance. Gated tickets get a
+# private note saying so, and replies always show in My Tickets.
+email_instances = ["prod"]                            # emails to the customer
+agent_notification_instances = ["dev", "uat", "prod"] # notifications to agents (in-app, email)
+ai_email_instances = []                               # emails sent by the AI agent
 max_token_lifetime = "60s"
 clock_leeway = "30s"
 tiers = ["SaaS Standard", "SaaS Growth", "Growth Plus", "Enterprise Standard", "Enterprise Premium"]

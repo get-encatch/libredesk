@@ -9,8 +9,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/abhinavxd/libredesk/internal/conversation"
+	"github.com/abhinavxd/libredesk/internal/encatch/instancegate"
 	"github.com/abhinavxd/libredesk/internal/encatch/mytickets"
 	"github.com/abhinavxd/libredesk/internal/encatch/orgtiers"
+	notifier "github.com/abhinavxd/libredesk/internal/notification"
 	"github.com/jmoiron/sqlx"
 	"github.com/valyala/fasthttp"
 	"github.com/zerodha/fastglue"
@@ -22,6 +25,9 @@ import (
 //	enabled = true
 //	inbox_id = 1
 //	session_ttl = "2h"
+//	email_instances = ["prod"]                            # customer emails
+//	agent_notification_instances = ["dev", "uat", "prod"] # notifications to agents
+//	ai_email_instances = []                               # AI agent emails: none
 //	max_token_lifetime = "60s"
 //	clock_leeway = "30s"
 //	tiers = [...]           # valid support_tier values
@@ -63,6 +69,34 @@ func initEncatchMyTickets(g *fastglue.Fastglue) {
 		MaxLifetime: durationOr(ko.String("my_tickets.max_token_lifetime"), 60*time.Second),
 		Leeway:      durationOr(ko.String("my_tickets.clock_leeway"), 30*time.Second),
 	}
+	// Per-instance gates: which Encatch instances' tickets send customer emails, agent
+	// notifications and AI agent emails, so testing from local/dev/uat mails no one. An
+	// absent setting gates nothing; an empty list allows no instance. Email tickets (no
+	// instance) are never gated. Replies always show in My Tickets.
+	var (
+		gateOnce sync.Once
+		gateDB   *sqlx.DB
+	)
+	gateDBFn := func() *sqlx.DB {
+		gateOnce.Do(func() {
+			gateDB = initDB()
+			gateDB.SetMaxOpenConns(2)
+			gateDB.SetMaxIdleConns(1)
+		})
+		return gateDB
+	}
+	gate := func(name, key string) *instancegate.Gate {
+		g := &instancegate.Gate{Name: name, Enabled: ko.Exists(key), Instances: ko.Strings(key), DB: gateDBFn, Logf: log.Printf}
+		if g.Enabled {
+			log.Printf("my-tickets: %s only for tickets from instances %v", name, g.Instances)
+		}
+		return g
+	}
+	emailGate := gate("customer email", "my_tickets.email_instances")
+	notifyGate := gate("agent notification", "my_tickets.agent_notification_instances")
+	aiGate := gate("AI agent email", "my_tickets.ai_email_instances")
+	conversation.SetEncatchEmailGates(emailGate.Allows, aiGate.Allows)
+	notifier.SetEncatchNotifyGate(notifyGate.Allows)
 	priorityTiers := ko.Strings("my_tickets.priority_tiers")
 	customerExts := ko.Strings("my_tickets.allowed_extensions") // empty: libredesk's setting alone
 	maxTotalMB := ko.Int("my_tickets.max_total_upload_mb")      // 0: no total limit
@@ -96,6 +130,8 @@ func initEncatchMyTickets(g *fastglue.Fastglue) {
 					Users: app.user, Conversations: app.conversation, Media: app.media, DB: db, InboxID: inboxID,
 					OrgTiers: &orgtiers.Store{DB: db, Tiers: ko.Strings("my_tickets.tiers")}, Logger: app.lo,
 					SubjectRefFormat: ko.String("conversation.subject_ref_format"),
+					EmailGate:        emailGate,
+					NotifyGate:       notifyGate,
 				},
 				EligibleTiers: priorityTiers,
 				SessionTTL:    sessionTTL,
