@@ -26,6 +26,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
@@ -165,8 +166,26 @@ def extract_deploy_dir(data, dest):
 
 
 def rsync(src, dst):
-    cmd = ["rsync", "-a", "--checksum"] + [f"--exclude={k}" for k in KEEP] + [src.rstrip("/") + "/", dst.rstrip("/") + "/"]
+    # -rlpt: no owner/group/devices. The agent runs as root, so -a would make files root-owned.
+    cmd = ["rsync", "-rlpt", "--checksum"] + [f"--exclude={k}" for k in KEEP] + [src.rstrip("/") + "/", dst.rstrip("/") + "/"]
     subprocess.run(cmd, check=True)
+
+
+def install_files(src, dst):
+    """Copies src's files into dst keeping dst's own mode and owner: the copied files get
+    dst's owner (the admin user), not root's, and dst itself isn't given src's mode
+    (a temporary directory is 0700, which locked the admin out of /srv/libredesk)."""
+    st = os.stat(dst)
+    os.chmod(src, stat.S_IMODE(st.st_mode))  # rsync -p applies the source root's mode to dst
+    rsync(src, dst)
+    os.chmod(dst, stat.S_IMODE(st.st_mode))
+    os.lchown(dst, st.st_uid, st.st_gid)
+    for root, dirs, files in os.walk(src):
+        rel = os.path.relpath(root, src)
+        for name in dirs + files:
+            path = os.path.normpath(os.path.join(dst, rel, name))
+            if os.path.lexists(path):
+                os.lchown(path, st.st_uid, st.st_gid)
 
 
 # ---- deploy ----
@@ -214,7 +233,7 @@ def deploy(dep_id, tag, dry_run=False):
         os.makedirs(PREVIOUS)
         rsync(BASE, PREVIOUS)
         before = (sha(os.path.join(BASE, "Caddyfile")), sha(os.path.join(BASE, "docker-compose.yml")))
-        rsync(tmp, BASE)
+        install_files(tmp, BASE)
     caddy_changed = before != (sha(os.path.join(BASE, "Caddyfile")), sha(os.path.join(BASE, "docker-compose.yml")))
 
     def apply(version, restart_caddy):
@@ -238,7 +257,7 @@ def deploy(dep_id, tag, dry_run=False):
     except (DeployError, subprocess.CalledProcessError) as e:
         log(f"deploy failed: {e}; rolling back to {prev}")
         write_status(dep_id, tag, "in_progress", f"failed ({e}); rolling back to {prev}")
-        rsync(PREVIOUS, BASE)
+        install_files(PREVIOUS, BASE)
         try:
             apply(prev, caddy_changed)
             back = healthy(prev, desk, support)

@@ -83,5 +83,38 @@ class Extract(unittest.TestCase):
             da.extract_deploy_dir(tarball([("libredesk-v1/README.md", b"x", "file")]), d)
 
 
+class InstallFiles(unittest.TestCase):
+    def test_keeps_dst_mode_and_owner(self):
+        with tempfile.TemporaryDirectory() as src, tempfile.TemporaryDirectory() as parent:
+            dst = os.path.join(parent, "srv")
+            os.makedirs(os.path.join(dst, "data"))
+            with open(os.path.join(dst, ".env"), "w") as f:
+                f.write("LIBREDESK_VERSION=v1\n")
+            os.chmod(dst, 0o755)
+            owner = (65534, 65534) if os.geteuid() == 0 else (os.getuid(), os.getgid())
+            os.chown(dst, *owner)
+            # The release: a 0700 temp dir (as tempfile makes) with a file, a script and a subdir.
+            os.makedirs(os.path.join(src, "scripts"))
+            with open(os.path.join(src, "Caddyfile"), "w") as f:
+                f.write("new")
+            with open(os.path.join(src, "scripts", "backup.sh"), "w") as f:
+                f.write("#!/bin/sh")
+            os.chmod(os.path.join(src, "scripts", "backup.sh"), 0o755)
+            with open(os.path.join(src, ".env"), "w") as f:  # must never overwrite the server's .env
+                f.write("LIBREDESK_VERSION=evil\n")
+            os.chmod(src, 0o700)
+
+            da.install_files(src, dst)
+
+            self.assertEqual(os.stat(dst).st_mode & 0o777, 0o755)
+            with open(os.path.join(dst, ".env")) as f:
+                self.assertEqual(f.read(), "LIBREDESK_VERSION=v1\n")
+            self.assertTrue(os.path.isdir(os.path.join(dst, "data")))
+            self.assertEqual(os.stat(os.path.join(dst, "scripts", "backup.sh")).st_mode & 0o777, 0o755)
+            for p in [dst, os.path.join(dst, "Caddyfile"), os.path.join(dst, "scripts"), os.path.join(dst, "scripts", "backup.sh")]:
+                st = os.stat(p)
+                self.assertEqual((st.st_uid, st.st_gid), owner, p)
+
+
 if __name__ == "__main__":
     unittest.main()
