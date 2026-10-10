@@ -575,3 +575,30 @@ func TestSecretsWarning(t *testing.T) {
 		t.Fatal("reply box lacks the secrets reminder")
 	}
 }
+
+func TestUploadTotalLimit(t *testing.T) {
+	h := newHarness(t)
+	h.svc.uploadLimits = func() UploadLimits {
+		return UploadLimits{MaxMB: 1, MaxTotalMB: 1, Extensions: []string{"txt"}}
+	}
+	sid := sessionCookie(t, h.do(h.svc.Login, "GET", "/my-tickets/login?token="+sign(t, "current-secret", baseClaims()), "", "", nil))
+	sess, _ := h.svc.store.Get(context.Background(), sid)
+	if body := string(h.do(h.svc.NewForm, "GET", "/my-tickets/new", sid, "", nil).Body()); !strings.Contains(body, "1 MB each, 1 MB in total") {
+		t.Fatal("new form doesn't show the total limit")
+	}
+	fields := map[string]string{"csrf": sess.CSRF, "subject": "Logs", "message": "Two logs attached"}
+	half := bytes.Repeat([]byte("a"), 600<<10) // each file is under 1 MB, together over it
+	resp := h.doMultipart(h.svc.Create, "/my-tickets/new", sid, fields, []testFile{{"files", "a.txt", half}, {"files", "b.txt", half}}, nil)
+	if body := string(resp.Body()); !strings.Contains(body, "up to 1 MB in total") || len(h.be.tickets) != 0 {
+		t.Fatalf("over the total: status %d, tickets %d", resp.StatusCode(), len(h.be.tickets))
+	}
+	resp = h.doMultipart(h.svc.Create, "/my-tickets/new", sid, fields, []testFile{{"files", "a.txt", half}}, nil)
+	if resp.StatusCode() != fasthttp.StatusSeeOther || len(h.be.files) != 1 {
+		t.Fatalf("within the total: status %d, files %d", resp.StatusCode(), len(h.be.files))
+	}
+	// No total shown when it can't limit anything beyond files x size.
+	h.svc.uploadLimits = func() UploadLimits { return UploadLimits{MaxMB: 1, MaxTotalMB: 50, Extensions: []string{"txt"}} }
+	if body := string(h.do(h.svc.NewForm, "GET", "/my-tickets/new", sid, "", nil).Body()); strings.Contains(body, "in total") {
+		t.Fatal("total shown although it doesn't limit anything")
+	}
+}

@@ -106,7 +106,8 @@ type Upload struct {
 
 // UploadLimits are libredesk's upload settings (Admin > General), read per request.
 type UploadLimits struct {
-	MaxMB      int
+	MaxMB      int      // per file
+	MaxTotalMB int      // all files of one ticket or reply together; 0 = no extra limit
 	Extensions []string // lowercase, without dots; "*" allows any
 }
 

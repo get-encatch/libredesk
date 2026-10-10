@@ -36,7 +36,7 @@
     <div class="space-y-2">
       <label for="files" class="label">Attachments <span class="font-normal text-muted-foreground">(optional)</span></label>
       <input type="file" id="files" name="files" multiple class="file-input"{{if .Accept}} accept="{{.Accept}}"{{end}}>
-      <p class="text-xs text-muted-foreground">Screenshots, logs or recordings help. Up to {{.MaxFiles}} files, {{.MaxMB}} MB each.</p>
+      <p class="text-xs text-muted-foreground">Screenshots, logs or recordings help. Up to {{.MaxFiles}} files, {{.MaxMB}} MB each{{if .MaxTotalMB}}, {{.MaxTotalMB}} MB in total{{end}}.</p>
     </div>
     {{end}}
     {{if .CanChoosePriority}}

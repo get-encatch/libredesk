@@ -119,7 +119,7 @@ const load = async () => {
     const resp = await listRemovals({ page: page.value, per_page: perPage.value, search: applied.value || undefined })
     const d = resp.data.data
     rows.value = d.results || []
-    totalPages.value = d.total_pages || 0
+    totalPages.value = Math.max(1, d.total_pages || 0) // "Page 1 of 1" when empty, not "of 0"
   } catch (error) {
     emitter.emit(EMITTER_EVENTS.SHOW_TOAST, { variant: 'destructive', description: handleHTTPError(error).message })
   } finally {

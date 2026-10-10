@@ -52,7 +52,7 @@ func main() {
 		Logger:        &lo,
 		UploadLimits: func() mytickets.UploadLimits {
 			// Same customer allowlist as deploy/config.toml (my_tickets.allowed_extensions).
-			return mytickets.UploadLimits{MaxMB: 10, Extensions: []string{"png", "jpg", "jpeg", "gif", "webp", "heic", "pdf", "txt", "log",
+			return mytickets.UploadLimits{MaxMB: 20, MaxTotalMB: 50, Extensions: []string{"png", "jpg", "jpeg", "gif", "webp", "heic", "pdf", "txt", "log",
 				"csv", "json", "xml", "md", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "zip", "mp4", "mov", "webm", "mp3", "m4a", "wav", "har"}}
 		},
 	})

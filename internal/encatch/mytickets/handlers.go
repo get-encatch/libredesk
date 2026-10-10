@@ -478,9 +478,10 @@ func (s *Service) renderNewForm(r *fastglue.Request, sess Session, subject, body
 
 // uploadView describes the attachment limits for the forms; nil hides the file field.
 type uploadView struct {
-	MaxMB    int
-	MaxFiles int
-	Accept   string // the file input's accept attribute, e.g. ".pdf,.png"
+	MaxMB      int
+	MaxTotalMB int // 0 when it wouldn't limit anything beyond MaxFiles × MaxMB
+	MaxFiles   int
+	Accept     string // the file input's accept attribute, e.g. ".pdf,.png"
 }
 
 func (s *Service) uploadInfo() *uploadView {
@@ -492,6 +493,9 @@ func (s *Service) uploadInfo() *uploadView {
 		return nil // nothing can be attached
 	}
 	v := &uploadView{MaxMB: l.MaxMB, MaxFiles: maxFiles}
+	if l.MaxTotalMB > 0 && l.MaxTotalMB < maxFiles*l.MaxMB {
+		v.MaxTotalMB = l.MaxTotalMB
+	}
 	if !contains(l.Extensions, "*") {
 		exts := make([]string, 0, len(l.Extensions))
 		for _, e := range l.Extensions {
@@ -528,6 +532,15 @@ func (s *Service) readUploads(r *fastglue.Request) ([]Upload, string) {
 	}
 	limits := s.uploadLimits()
 	maxBytes := int64(limits.MaxMB) << 20
+	if limits.MaxTotalMB > 0 {
+		var total int64
+		for _, fh := range headers {
+			total += fh.Size
+		}
+		if total > int64(limits.MaxTotalMB)<<20 {
+			return nil, fmt.Sprintf("Attachments can be up to %d MB in total. Please send fewer or smaller files.", limits.MaxTotalMB)
+		}
+	}
 	files := make([]Upload, 0, len(headers))
 	for _, fh := range headers {
 		name := filepath.Base(fh.Filename)

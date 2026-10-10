@@ -43,7 +43,7 @@
     <div class="composer">
       <textarea id="message" name="message" rows="3" {{if not .Uploads}}required {{end}}maxlength="20000" placeholder="{{if eq .TicketStatus "Resolved"}}Reply to reopen this ticket…{{else}}Write your reply…{{end}}">{{.Draft}}</textarea>
       <div class="flex flex-wrap items-center justify-between gap-3 px-3 pb-3">
-        {{with .Uploads}}<label class="composer-attach" title="Up to {{.MaxFiles}} files, {{.MaxMB}} MB each">{{template "icon" "paperclip"}}<span class="sr-only">Attach files</span>
+        {{with .Uploads}}<label class="composer-attach" title="Up to {{.MaxFiles}} files, {{.MaxMB}} MB each{{if .MaxTotalMB}}, {{.MaxTotalMB}} MB in total{{end}}">{{template "icon" "paperclip"}}<span class="sr-only">Attach files</span>
           <input type="file" name="files" multiple class="composer-file"{{if .Accept}} accept="{{.Accept}}"{{end}}>
         </label>{{else}}<span class="text-xs text-muted-foreground">We'll also email you when we reply.</span>{{end}}
         <button class="btn btn-default btn-sm ml-auto" type="submit">Send reply</button>

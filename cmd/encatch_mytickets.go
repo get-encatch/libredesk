@@ -26,6 +26,7 @@ import (
 //	tiers = [...]           # valid support_tier values
 //	priority_tiers = [...]  # tiers that may choose Express/Urgent
 //	allowed_extensions = [...]  # attachment types customers may upload (also limited by libredesk's setting)
+//	max_total_upload_mb = 50    # all attachments of one ticket or reply together
 //
 // Issuer secrets come from the environment only, never config files:
 //
@@ -63,6 +64,7 @@ func initEncatchMyTickets(g *fastglue.Fastglue) {
 	}
 	priorityTiers := ko.Strings("my_tickets.priority_tiers")
 	customerExts := ko.Strings("my_tickets.allowed_extensions") // empty: libredesk's setting alone
+	maxTotalMB := ko.Int("my_tickets.max_total_upload_mb")      // 0: no total limit
 
 	// A small pool of our own for the list queries; libredesk doesn't expose its DB handle.
 	var (
@@ -90,7 +92,7 @@ func initEncatchMyTickets(g *fastglue.Fastglue) {
 				// to my_tickets.allowed_extensions: customers are less trusted than agents.
 				UploadLimits: func() mytickets.UploadLimits {
 					c := app.consts.Load().(*constants)
-					return mytickets.UploadLimits{MaxMB: c.MaxFileUploadSizeMB,
+					return mytickets.UploadLimits{MaxMB: c.MaxFileUploadSizeMB, MaxTotalMB: maxTotalMB,
 						Extensions: mytickets.IntersectExtensions(c.AllowedUploadFileExtensions, customerExts)}
 				},
 			})

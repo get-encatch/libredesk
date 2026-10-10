@@ -31,9 +31,12 @@ session_lifetime = "9h"
 # Request read and write timeouts.
 read_timeout = "60s"
 write_timeout = "60s"
-# Maximum request body size in bytes (100MB)
+# Maximum request body size in bytes (110MB).
+# encatch: above 5 files x 20MB (libredesk's per-file limit) plus form overhead, so an
+# oversized My Tickets upload reaches the app and gets a friendly message instead of a
+# bare 413. Customer uploads are capped lower by my_tickets.max_total_upload_mb.
 # If you are using proxy, you may need to configure them to allow larger request bodies.
-max_body_size = 104857600
+max_body_size = 115343360
 # Size of the read buffer for incoming requests (also limits max header size).
 read_buffer_size = 65536
 # Keepalive settings.
@@ -207,3 +210,6 @@ priority_tiers = ["Growth Plus", "Enterprise Standard", "Enterprise Premium"]
 # setting (Admin > General > allowed file extensions). No executables, HTML, SVG or scripts.
 allowed_extensions = ["png", "jpg", "jpeg", "gif", "webp", "heic", "pdf", "txt", "log", "csv", "json", "xml", "md",
   "doc", "docx", "xls", "xlsx", "ppt", "pptx", "zip", "mp4", "mov", "webm", "mp3", "m4a", "wav", "har"]
+# All attachments of one new ticket or reply together, in MB (each file is also limited
+# by libredesk's max upload size). Keep max_body_size above 5 x that per-file size.
+max_total_upload_mb = 50
