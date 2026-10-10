@@ -6,6 +6,17 @@
 		max_size 110MB
 	}
 
+	# The agent app may not be framed by other sites (clickjacking). Upstream sets the same
+	# headers on the app page from v2.9.0 (serveIndexPage); this can go after that merge.
+	# The chat widget, help center and CSAT pages are embedded or linked elsewhere and stay
+	# frameable; My Tickets sends its own stricter frame-ancestors 'none'.
+	@agentApp not path /widget /widget/* /widget.js /hc /hc/* /csat/* /my-tickets /my-tickets/*
+	header @agentApp {
+		Content-Security-Policy "frame-ancestors 'self'"
+		X-Frame-Options SAMEORIGIN
+		match header Content-Type text/html*
+	}
+
 	# Deploy agent status (deploy/agent/deploy_agent.py), watched by the approved
 	# GitHub deploy job. Only deployment id, version and state; no secrets.
 	handle /.well-known/encatch-deploy.json {

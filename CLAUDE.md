@@ -17,7 +17,7 @@ This repo is **get-encatch/libredesk**, the Encatch (CMSS) fork of [abhinavxd/li
 - Use merge, not rebase, on shared branches.
 - Merge each release as it ships, so we never fall several versions behind.
 - Security fixes taken ahead of a release (2026-10-10, Dependabot triage): cherry-picked upstream `908f3413` (qs 6.16.0) and `92954f1d` (axios 1.20.0) with `-x`; they merge cleanly when the release containing them arrives. Our own lockfile-only update moved prosemirror-view to 1.42.6 (with prosemirror-model 1.25.12) and nanoid to 5.1.16. If `frontend/pnpm-lock.yaml` conflicts on the next merge, take upstream's lockfile, run `pnpm install`, and check prosemirror-view is still >= 1.42.3 with a single prosemirror-model.
-- **Merge upstream v2.9.0 as soon as it's released:** upstream `ac5921e1` ("fix security issues found in repository review": media ownership, session revocation, OIDC, widget websocket) is on upstream main only. It changes `media.Insert`, which `internal/encatch/mytickets/adapter.go` calls, so expect a one-line fix there.
+- **Merge upstream v2.9.0 as soon as it's released:** upstream `ac5921e1` ("fix security issues found in repository review": media ownership, session revocation, OIDC, widget websocket) is on upstream main only. It changes `media.Insert`, which `internal/encatch/mytickets/adapter.go` calls, so expect a one-line fix there. It also sets `frame-ancestors 'self'` on the agent app page itself, so the `@agentApp` header rule in `deploy/Caddyfile` (added 2026-10-10 as a stopgap) can be removed then.
 
 ## Rules for our changes (to keep upstream merges easy)
 
