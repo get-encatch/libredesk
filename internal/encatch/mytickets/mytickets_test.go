@@ -149,6 +149,17 @@ func TestScopeWhere(t *testing.T) {
 	}
 }
 
+func TestScopeWhereSearch(t *testing.T) {
+	where, args := scopeWhere(ListQuery{Scope: ScopeOrg, OrgID: "42", Search: "#131"})
+	if !strings.Contains(where, "c.reference_number = $2 OR c.subject ILIKE $3") || args[1] != "131" || args[2] != "%#131%" {
+		t.Fatalf("number search = %q %v", where, args)
+	}
+	where, args = scopeWhere(ListQuery{Scope: ScopeOrg, OrgID: "42", Search: `50%_off\`})
+	if strings.Contains(where, "reference_number") || args[1] != `%50\%\_off\\%` {
+		t.Fatalf("text search = %q %v", where, args)
+	}
+}
+
 func TestTextToHTML(t *testing.T) {
 	got := textToHTML("Hello <script>x</script>\nline two\n\nPara 2")
 	want := "<p>Hello &lt;script&gt;x&lt;/script&gt;<br>line two</p><p>Para 2</p>"
@@ -323,6 +334,14 @@ func TestFlow(t *testing.T) {
 	resp = h.do(h.svc.Reply, "POST", "/my-tickets/100/reply", sid, "csrf="+csrf+"&message=More+info", map[string]string{"ref": "100"})
 	if resp.StatusCode() != fasthttp.StatusSeeOther || len(h.be.msgs["u100"]) != 2 {
 		t.Fatalf("reply: %d, msgs %d", resp.StatusCode(), len(h.be.msgs["u100"]))
+	}
+	if loc := string(resp.Header.Peek("Location")); loc != "/my-tickets/100?sent=1" {
+		t.Fatalf("reply location = %q", loc)
+	}
+	// The inbox filters survive a reply; the redirect stays on our own path.
+	resp = h.do(h.svc.Reply, "POST", "/my-tickets/100/reply?status=Open&q=a+b&next=//evil.example", sid, "csrf="+csrf+"&message=Again", map[string]string{"ref": "100"})
+	if loc := string(resp.Header.Peek("Location")); loc != "/my-tickets/100?q=a+b&sent=1&status=Open" {
+		t.Fatalf("reply location with filters = %q", loc)
 	}
 
 	// A teammate's ticket is hidden in self scope and returns 404, not 403.

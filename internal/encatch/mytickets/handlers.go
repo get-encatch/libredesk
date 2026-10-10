@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"html"
 	"html/template"
+	"net/url"
 	"strings"
 	"time"
 	"unicode"
@@ -51,6 +52,7 @@ const (
 	maxSubjectLen  = 200
 	maxMessageLen  = 20000
 	defaultPerPage = 200
+	maxSearchLen   = 100
 )
 
 // Service holds My Tickets' dependencies and serves its pages.
@@ -169,45 +171,74 @@ func (s *Service) Login(r *fastglue.Request) error {
 	return s.redirect(r, basePath)
 }
 
+// inboxRow is one ticket in the inbox list.
+type inboxRow struct {
+	TicketSummary
+	Status string
+	Sender string
+}
+
+// loadList reads the list filters from the query string and loads the inbox
+// list. The list page and the ticket page both show it.
+func (s *Service) loadList(r *fastglue.Request, sess Session) (map[string]any, error) {
+	args := r.RequestCtx.QueryArgs()
+	status := string(args.Peek("status"))
+	if status != StatusOpen && status != StatusWaitingYou && status != StatusResolved {
+		status = ""
+	}
+	project := string(args.Peek("project"))
+	projectName, ok := sess.ProjectName(project)
+	if !ok {
+		project = ""
+	}
+	search := strings.TrimSpace(string(args.Peek("q")))
+	if r := []rune(search); len(r) > maxSearchLen {
+		search = string(r[:maxSearchLen])
+	}
+	tickets, err := s.backend.ListTickets(ListQuery{
+		Scope: sess.Scope, ContactID: sess.ContactID, OrgID: sess.OrgID, ProjectIDs: sess.ProjectIDs(),
+		Status: status, ProjectID: project, Search: search, Limit: defaultPerPage,
+	})
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]inboxRow, 0, len(tickets))
+	for _, t := range tickets {
+		rows = append(rows, inboxRow{t, CustomerStatus(t.InternalStatus), sender(sess, t)})
+	}
+	// Ticket links carry the filters so the list stays the same while reading.
+	keep := url.Values{}
+	for k, v := range map[string]string{"status": status, "project": project, "q": search} {
+		if v != "" {
+			keep.Set(k, v)
+		}
+	}
+	filters := ""
+	if len(keep) > 0 {
+		filters = "?" + keep.Encode()
+	}
+	return map[string]any{
+		"S": sess, "Tickets": rows, "Status": status, "Project": project, "ProjectName": projectName,
+		"Search": search, "Filters": template.URL(filters), // #nosec G203: built by url.Values.Encode
+		"ShowRaisedBy": sess.Scope != ScopeSelf, "ShowProject": len(sess.Projects) > 0,
+	}, nil
+}
+
 // List shows the tickets in the session's scope.
 func (s *Service) List(r *fastglue.Request) error {
 	sess, ok := s.session(r)
 	if !ok {
 		return s.sessionEnded(r)
 	}
-	status := string(r.RequestCtx.QueryArgs().Peek("status"))
-	project := string(r.RequestCtx.QueryArgs().Peek("project"))
-	if status != StatusOpen && status != StatusWaitingYou && status != StatusResolved {
-		status = ""
-	}
-	projectName, ok := sess.ProjectName(project)
-	if !ok {
-		project = ""
-	}
-	tickets, err := s.backend.ListTickets(ListQuery{
-		Scope: sess.Scope, ContactID: sess.ContactID, OrgID: sess.OrgID, ProjectIDs: sess.ProjectIDs(),
-		Status: status, ProjectID: project, Limit: defaultPerPage,
-	})
+	data, err := s.loadList(r, sess)
 	if err != nil {
 		s.lo.Error("my-tickets: listing", "error", err)
 		return s.renderError(r, fasthttp.StatusInternalServerError, "We couldn't load your tickets. Please try again.")
 	}
-	type row struct {
-		TicketSummary
-		Status string
-		Sender string
-	}
-	rows := make([]row, 0, len(tickets))
-	for _, t := range tickets {
-		rows = append(rows, row{t, CustomerStatus(t.InternalStatus), sender(sess, t)})
-	}
-	return s.render(r, fasthttp.StatusOK, "list.html", map[string]any{
-		"S": sess, "Tickets": rows, "Status": status, "Project": project, "ProjectName": projectName,
-		"ShowRaisedBy": sess.Scope != ScopeSelf, "ShowProject": len(sess.Projects) > 0,
-	})
+	return s.render(r, fasthttp.StatusOK, "list.html", data)
 }
 
-// View shows one ticket's thread.
+// View shows one ticket's thread next to the inbox list.
 func (s *Service) View(r *fastglue.Request) error {
 	sess, ok := s.session(r)
 	if !ok {
@@ -222,6 +253,11 @@ func (s *Service) View(r *fastglue.Request) error {
 		s.lo.Error("my-tickets: loading messages", "error", err)
 		return s.renderError(r, fasthttp.StatusInternalServerError, "We couldn't load this ticket. Please try again.")
 	}
+	data, err := s.loadList(r, sess)
+	if err != nil {
+		s.lo.Error("my-tickets: listing", "error", err)
+		return s.renderError(r, fasthttp.StatusInternalServerError, "We couldn't load this ticket. Please try again.")
+	}
 	type viewMsg struct {
 		Message
 		Body template.HTML
@@ -230,10 +266,11 @@ func (s *Service) View(r *fastglue.Request) error {
 	for _, m := range msgs {
 		view = append(view, viewMsg{m, template.HTML(s.sanitize.Sanitize(m.HTML))}) // #nosec G203: sanitised above
 	}
-	return s.render(r, fasthttp.StatusOK, "ticket.html", map[string]any{
-		"S": sess, "T": t, "Status": CustomerStatus(t.InternalStatus), "Messages": view,
-		"Sent": string(r.RequestCtx.QueryArgs().Peek("sent")) == "1",
-	})
+	data["T"] = t
+	data["TicketStatus"] = CustomerStatus(t.InternalStatus)
+	data["Messages"] = view
+	data["Sent"] = string(r.RequestCtx.QueryArgs().Peek("sent")) == "1"
+	return s.render(r, fasthttp.StatusOK, "ticket.html", data)
 }
 
 // NewForm shows the new-ticket form.
@@ -321,7 +358,14 @@ func (s *Service) Reply(r *fastglue.Request) error {
 		s.lo.Error("my-tickets: adding reply", "error", err)
 		return s.renderError(r, fasthttp.StatusInternalServerError, "We couldn't send your reply. Please try again.")
 	}
-	return s.redirect(r, basePath+"/"+t.ReferenceNumber+"?sent=1")
+	// Back to the ticket, keeping the inbox filters the form carried.
+	back := url.Values{"sent": {"1"}}
+	for _, k := range []string{"status", "project", "q"} {
+		if v := string(r.RequestCtx.QueryArgs().Peek(k)); v != "" {
+			back.Set(k, v)
+		}
+	}
+	return s.redirect(r, basePath+"/"+t.ReferenceNumber+"?"+back.Encode())
 }
 
 // Asset serves an embedded stylesheet or logo. URLs carry ?v=<hash>, so they

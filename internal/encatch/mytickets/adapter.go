@@ -91,6 +91,21 @@ type listRow struct {
 }
 
 // scopeWhere builds the WHERE clause and args for a list query. It must match Visible.
+// likeEscaper escapes ILIKE wildcards in search text (backslash is the default escape).
+var likeEscaper = strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`)
+
+func isDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 func scopeWhere(q ListQuery) (string, []any) {
 	var (
 		conds []string
@@ -114,6 +129,14 @@ func scopeWhere(q ListQuery) (string, []any) {
 	}
 	if q.ProjectID != "" {
 		conds = append(conds, "c.custom_attributes->>'project_id' = "+arg(q.ProjectID))
+	}
+	if q.Search != "" {
+		like := "%" + likeEscaper.Replace(q.Search) + "%"
+		if ref := strings.TrimPrefix(q.Search, "#"); isDigits(ref) {
+			conds = append(conds, "(c.reference_number = "+arg(ref)+" OR c.subject ILIKE "+arg(like)+")")
+		} else {
+			conds = append(conds, "c.subject ILIKE "+arg(like))
+		}
 	}
 	switch q.Status {
 	case StatusWaitingYou:

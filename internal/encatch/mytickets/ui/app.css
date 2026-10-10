@@ -106,11 +106,35 @@
   .nav-dropdown-menu .sidebar-label { @apply pt-2; }
   .avatar { @apply flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-xs font-semibold text-primary-foreground; }
   .icon { @apply h-4 w-4 shrink-0; }
-  /* Mailbox-style ticket list (shadcn "mail" example). */
-  .mail-list { @apply flex flex-col gap-2; }
-  .mail-item { @apply flex flex-col gap-1.5 rounded-lg border bg-card p-3 text-left transition-colors hover:bg-accent; }
-  .mail-item-unread { @apply border-l-2 border-l-primary; }
+  /* Inbox (after the shadcnblocks "Ticket inbox" layout): list | conversation | details.
+     From lg each pane fills the screen height and scrolls on its own; the details
+     pane shows from xl. Below lg one pane shows at a time, in normal page flow. */
+  .inbox { @apply lg:flex lg:h-screen lg:overflow-hidden; }
+  .inbox-list { @apply flex-col lg:w-80 lg:shrink-0 lg:border-r xl:w-96; }
+  .inbox-list-head { @apply space-y-3 border-b px-4 py-3; }
+  .inbox-items { @apply divide-y lg:flex-1 lg:overflow-y-auto; }
+  .inbox-item { @apply flex flex-col gap-1.5 px-4 py-3 transition-colors hover:bg-accent; }
+  .inbox-item-active { @apply bg-accent; }
+  .inbox-empty { @apply flex-1 items-center justify-center p-8; }
+  .search { @apply relative; }
+  .search > .icon { @apply pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground; }
+  .search > .input { @apply pl-8; }
+  .thread { @apply flex min-w-0 flex-col lg:flex-1; }
+  .thread-head { @apply flex h-14 shrink-0 items-center gap-2 border-b px-4 lg:px-6; }
+  .thread-body { @apply px-4 py-6 lg:flex-1 lg:overflow-y-auto lg:px-6; }
+  .thread-reply { @apply border-t px-4 py-3 lg:px-6; }
+  .composer { @apply rounded-lg border border-input bg-background focus-within:ring-1 focus-within:ring-ring; }
+  .composer textarea { @apply block w-full resize-none bg-transparent px-3 pt-3 text-sm placeholder:text-muted-foreground focus:outline-none; }
+  .details { @apply hidden w-72 shrink-0 overflow-y-auto border-l px-5 py-5 xl:block; }
+  .details-label { @apply text-xs font-medium uppercase tracking-wide text-muted-foreground; }
   .mail-dot { @apply h-2 w-2 shrink-0 rounded-full bg-primary; }
+  .avatar-xs { @apply h-5 w-5 rounded-full text-[10px]; }
+  .avatar-muted { @apply bg-muted text-muted-foreground; }
+  .pill { @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium; }
+  .dot { @apply h-1.5 w-1.5 rounded-full; }
+  .dot-open { background: var(--badge-primary-text); }
+  .dot-waiting { background: var(--warning-foreground); }
+  .dot-resolved { background: var(--success); }
   .badge-outline { @apply gap-1 border-border bg-transparent font-normal text-muted-foreground; }
   .badge-outline .icon { @apply h-3 w-3; }
   /* Status icons use the same colours as the status badges. */

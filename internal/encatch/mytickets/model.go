@@ -130,6 +130,7 @@ type ListQuery struct {
 	ProjectIDs []string
 	Status     string // optional customer-facing status filter
 	ProjectID  string // optional project filter
+	Search     string // optional: subject text or ticket number
 	Limit      int
 }
 

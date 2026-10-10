@@ -186,7 +186,9 @@ func (b *sampleBackend) ListTickets(q mytickets.ListQuery) ([]mytickets.TicketSu
 	var out []mytickets.TicketSummary
 	for _, t := range b.tickets {
 		if !mytickets.Visible(s, *t) || (q.ProjectID != "" && t.ProjectID != q.ProjectID) ||
-			(q.Status != "" && mytickets.CustomerStatus(t.InternalStatus) != q.Status) {
+			(q.Status != "" && mytickets.CustomerStatus(t.InternalStatus) != q.Status) ||
+			(q.Search != "" && strings.TrimPrefix(q.Search, "#") != t.ReferenceNumber &&
+				!strings.Contains(strings.ToLower(t.Subject), strings.ToLower(q.Search))) {
 			continue
 		}
 		row := *t

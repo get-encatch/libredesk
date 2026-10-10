@@ -1,0 +1,46 @@
+{{/* inbox-list is the ticket list pane, shared by the list and ticket pages.
+     It takes the page data: Tickets, Status, Project, ProjectName, Search,
+     Filters, ShowProject, and T (the open ticket, on the ticket page). */}}
+{{define "inbox-list"}}
+<section class="inbox-list {{if .T}}hidden lg:flex{{else}}flex{{end}}" aria-label="Tickets">
+  <div class="inbox-list-head">
+    <div class="flex items-baseline justify-between gap-2">
+      <h1 class="truncate text-base font-semibold tracking-tight">{{or .Status "All tickets"}}{{if .ProjectName}} <span class="font-normal text-muted-foreground">· {{.ProjectName}}</span>{{end}}</h1>
+      <span class="shrink-0 text-xs text-muted-foreground">{{len .Tickets}} {{if eq (len .Tickets) 1}}ticket{{else}}tickets{{end}}</span>
+    </div>
+    <form method="get" action="/my-tickets" class="search" role="search">
+      {{if .Status}}<input type="hidden" name="status" value="{{.Status}}">{{end}}
+      {{if .Project}}<input type="hidden" name="project" value="{{.Project}}">{{end}}
+      {{template "icon" "search"}}
+      <input type="search" name="q" value="{{.Search}}" maxlength="100" placeholder="Search by subject or #number" class="input" aria-label="Search tickets">
+    </form>
+  </div>
+  <ul class="inbox-items">
+    {{range .Tickets}}{{$waiting := eq .Status "Waiting on you"}}{{$on := and $.T (eq .ReferenceNumber $.T.ReferenceNumber)}}
+    <li>
+      <a href="/my-tickets/{{.ReferenceNumber}}{{$.Filters}}" class="inbox-item {{if $on}}inbox-item-active{{end}}" {{if $on}}aria-current="page"{{end}}>
+        <div class="flex items-center gap-2">
+          {{if $waiting}}<span class="mail-dot" title="Waiting on your reply"></span>{{end}}
+          <span class="truncate text-sm {{if $waiting}}font-semibold{{else}}font-medium{{end}}">{{.Subject}}</span>
+          <time class="ml-auto shrink-0 text-xs text-muted-foreground" datetime="{{.UpdatedAt.Format "2006-01-02T15:04:05Z07:00"}}" title="{{date .UpdatedAt}}">{{mailDate .UpdatedAt}}</time>
+        </div>
+        {{if .Preview}}<p class="line-clamp-2 text-xs leading-relaxed text-muted-foreground [overflow-wrap:anywhere]">{{.Preview}}</p>{{end}}
+        <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span class="avatar avatar-xs {{if ne .Sender "Encatch Support"}}avatar-muted{{end}}" aria-hidden="true">{{initials .Sender ""}}</span>
+          <span class="min-w-0 truncate">{{.Sender}} · #{{.ReferenceNumber}}{{if and $.ShowProject .ProjectName}} · {{.ProjectName}}{{end}}</span>
+          <span class="ml-auto shrink-0">{{template "status-pill" .Status}}</span>
+        </div>
+      </a>
+    </li>
+    {{else}}
+    <li class="px-4 py-12 text-center">
+      <p class="text-sm font-medium">{{if .Search}}No tickets match “{{.Search}}”{{else if or .Status .ProjectName}}No tickets in this view{{else}}No tickets yet{{end}}</p>
+      <p class="mt-1 text-xs text-muted-foreground">{{if or .Search .Status .ProjectName}}Try another search or view.{{else}}Raise a ticket and we'll get back to you.{{end}}</p>
+      {{if .Search}}<a class="btn btn-outline btn-sm mt-4" href="/my-tickets{{if .Status}}?status={{.Status}}{{if .Project}}&amp;project={{.Project}}{{end}}{{else if .Project}}?project={{.Project}}{{end}}">Clear search</a>{{end}}
+    </li>
+    {{end}}
+  </ul>
+</section>
+{{end}}
+
+{{define "status-pill"}}<span class="pill"><span class="dot {{if eq . "Waiting on you"}}dot-waiting{{else if eq . "Resolved"}}dot-resolved{{else}}dot-open{{end}}"></span>{{.}}</span>{{end}}
