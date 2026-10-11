@@ -51,4 +51,6 @@ jobs:
 
       - name: Go serves the build
         working-directory: internal/encatch/mytickets
-        run: go test -count=1 -run 'TestEmbeddedBuild|TestApp' -v . | tee /dev/stderr | grep -q -- '--- PASS: TestEmbeddedBuild'
+        env:
+          MY_TICKETS_REQUIRE_BUILD: "1" # fail, not skip, if the build isn't embedded
+        run: go test -count=1 -run 'TestEmbeddedBuild|TestApp' -v .

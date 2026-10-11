@@ -1,6 +1,7 @@
 package mytickets
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -180,6 +181,9 @@ func TestAppAsset(t *testing.T) {
 // whose scripts and styles are all among its assets.
 func TestEmbeddedBuild(t *testing.T) {
 	if builtApp == nil {
+		if os.Getenv("MY_TICKETS_REQUIRE_BUILD") != "" {
+			t.Fatal("the Vue app isn't embedded: run pnpm build in web/ before go test")
+		}
 		t.Skip("the Vue app isn't built (web/build/app); the release build checks it")
 	}
 	h := newHarness(t)
