@@ -163,18 +163,14 @@ func initEncatchMyTickets(g *fastglue.Fastglue) {
 		}
 	}
 
-	g.GET("/my-tickets/assets/{file}", wrap((*mytickets.Service).Asset))
+	// Sign-in (a token from Encatch), then the Vue app (internal/encatch/mytickets/web),
+	// whose pages all load the same index.html, and its JSON API.
 	g.GET("/my-tickets/login", rateLimit(wrap((*mytickets.Service).Login), "auth"))
 	g.POST("/my-tickets/login", rateLimit(wrap((*mytickets.Service).Login), "auth"))
-	g.POST("/my-tickets/logout", rateLimit(wrap((*mytickets.Service).Logout), "public"))
-	g.GET("/my-tickets", rateLimit(wrap((*mytickets.Service).List), "public"))
-	g.GET("/my-tickets/new", rateLimit(wrap((*mytickets.Service).NewForm), "public"))
-	g.POST("/my-tickets/new", rateLimit(wrap((*mytickets.Service).Create), "public"))
-	g.POST("/my-tickets/org", rateLimit(wrap((*mytickets.Service).SwitchOrg), "public"))
-	g.POST("/my-tickets/theme", rateLimit(wrap((*mytickets.Service).Theme), "public"))
-	g.GET("/my-tickets/{ref}", rateLimit(wrap((*mytickets.Service).View), "public"))
-	g.POST("/my-tickets/{ref}/reply", rateLimit(wrap((*mytickets.Service).Reply), "public"))
-	// The JSON API for the Vue customer app.
+	g.GET("/my-tickets/assets/{file}", wrap((*mytickets.Service).AppAsset))
+	g.GET("/my-tickets", rateLimit(wrap((*mytickets.Service).App), "public"))
+	g.GET("/my-tickets/new", rateLimit(wrap((*mytickets.Service).App), "public"))
+	g.GET("/my-tickets/{ref}", rateLimit(wrap((*mytickets.Service).App), "public"))
 	for _, rt := range mytickets.APIRoutes {
 		rt.Register(g, rateLimit(wrap(rt.Handler), "public"))
 	}

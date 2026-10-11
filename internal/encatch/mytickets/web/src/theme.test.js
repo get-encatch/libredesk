@@ -30,9 +30,8 @@ describe('savedTheme', () => {
 // The dark tokens appear twice in app.css (chosen Dark, and a dark device without a
 // Light choice); they must not drift apart.
 describe('app.css', () => {
-  // Vitest stubs CSS imports, so read the files (tests run from web/).
+  // Vitest stubs CSS imports, so read the file (tests run from web/).
   const css = readFileSync('src/app.css', 'utf8')
-  const old = readFileSync('../ui/app.css', 'utf8')
   const block = (selector) => {
     const i = css.indexOf(`${selector} {`)
     expect(i).toBeGreaterThan(-1)
@@ -44,11 +43,5 @@ describe('app.css', () => {
     const device = block(':root:not([data-theme="light"])')
     expect(chosen).toContain('--background:')
     expect(device).toBe(chosen)
-  })
-  it('uses the same tokens as the server-rendered pages', () => {
-    for (const token of ['--background: #ffffff', '--primary: #394dfe', '--background: #09090b', '--muted-foreground: #9aa4b8']) {
-      expect(old).toContain(token)
-      expect(css).toContain(token)
-    }
   })
 })
