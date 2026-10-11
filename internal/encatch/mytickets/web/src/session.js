@@ -1,6 +1,6 @@
 // The signed-in customer's session, shared by every view.
 import { reactive } from 'vue'
-import { api, sessionEnded, setCsrf } from './api'
+import { api, sessionEnded, setCsrf, staleCSRF } from './api'
 
 export const state = reactive({
   // loading | ready | ended (session expired) | signed-out | error
@@ -24,6 +24,10 @@ sessionEnded((err) => {
   state.message = err.message
   setCsrf('')
 })
+
+// The cookie now belongs to another session (signed in again in another tab): load
+// it, with its CSRF token, so trying again works. The error asks the customer to.
+staleCSRF(() => loadSession())
 
 export async function loadSession() {
   try {
