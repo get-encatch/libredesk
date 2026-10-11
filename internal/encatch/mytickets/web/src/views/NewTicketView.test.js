@@ -4,6 +4,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { api, ApiError } from '@/api'
 import { state } from '@/session'
 import NewTicketView from './NewTicketView.vue'
+import { EditorStub } from '@/test/editorStub'
 
 const Blank = { template: '<div />' }
 const uploads = { max_mb: 1, max_total_mb: 0, max_files: 5, extensions: ['pdf', 'txt'], accept: '.pdf,.txt' }
@@ -21,14 +22,14 @@ async function render() {
   })
   router.push('/new')
   await router.isReady()
-  const w = mount(NewTicketView, { global: { plugins: [router] }, attachTo: document.body })
+  const w = mount(NewTicketView, { global: { plugins: [router], stubs: { RichEditor: EditorStub } }, attachTo: document.body })
   await flushPromises()
   return { w, router }
 }
 
 async function fill(w, subject, message) {
   await w.find('#subject').setValue(subject)
-  await w.find('#message').setValue(message)
+  await w.find('.editor-stub').setValue(message)
 }
 
 beforeEach(() => {
@@ -74,7 +75,9 @@ describe('NewTicketView', () => {
     await w.find('form').trigger('submit')
     await flushPromises()
     const form = create.mock.calls[0][0]
-    expect(Object.fromEntries(form.entries())).toEqual({ subject: 'Export fails', message: 'Steps to reproduce', project: '', priority: 'Normal' })
+    expect(Object.fromEntries(form.entries())).toEqual({
+      subject: 'Export fails', message: 'Steps to reproduce', message_html: '<p>Steps to reproduce</p>', project: '', priority: 'Normal',
+    })
     expect(router.currentRoute.value.fullPath).toBe('/142')
   })
 

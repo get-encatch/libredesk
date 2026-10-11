@@ -13,8 +13,8 @@ import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Textarea } from '@/components/ui/textarea'
 import FileChips from '@/components/FileChips.vue'
+import RichEditor from '@/components/RichEditor.vue'
 import { api } from '@/api'
 import { newTicketProblem, ORG_LEVEL, PRIORITIES } from '@/newTicket'
 import { state } from '@/session'
@@ -29,7 +29,8 @@ const options = ref(null)
 const readOnly = ref('') // the server's explanation, when the user can't raise tickets
 const loadError = ref('')
 
-const form = ref({ project: '', subject: '', message: '', priority: 'Normal' })
+const form = ref({ project: '', subject: '', priority: 'Normal' })
+const message = ref({ html: '', text: '' }) // from the editor
 const files = ref([])
 const problem = ref('')
 const sending = ref(false)
@@ -77,13 +78,15 @@ async function showProblem(text) {
 async function submit() {
   if (sending.value) return
   const subject = form.value.subject.trim()
-  const message = form.value.message.trim()
-  const p = newTicketProblem({ subject, message, project: project.value }, options.value, limits.value) || fileProblem(files.value, uploads.value)
+  const { html, text } = message.value
+  const p = newTicketProblem({ subject, message: text, project: project.value }, options.value, limits.value) || fileProblem(files.value, uploads.value)
   if (p) return showProblem(p)
 
   const body = new FormData()
   body.append('subject', subject)
-  body.append('message', message)
+  // Formatted for the ticket, plain text for anything that doesn't read HTML.
+  body.append('message', text)
+  if (text) body.append('message_html', html)
   body.append('project', project.value)
   if (options.value.can_choose_priority) body.append('priority', form.value.priority)
   for (const f of files.value) body.append('files', f)
@@ -164,8 +167,10 @@ async function submit() {
             </div>
 
             <div class="space-y-2">
-              <Label for="message">What do you need help with?</Label>
-              <Textarea id="message" v-model="form.message" name="message" :maxlength="limits.message" class="min-h-44" />
+              <Label id="message-label" as="p">What do you need help with?</Label>
+              <div class="rounded-md border border-input shadow-xs focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30">
+                <RichEditor id="message" labelledby="message-label" content-class="[&_.tiptap]:min-h-44" @update="message = $event" />
+              </div>
               <p class="text-xs text-muted-foreground">For bugs, include the steps to reproduce, what you expected, and the SDK and version.</p>
             </div>
 

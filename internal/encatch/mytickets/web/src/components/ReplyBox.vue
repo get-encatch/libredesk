@@ -3,12 +3,13 @@ import { computed, ref } from 'vue'
 import { Paperclip, ShieldAlert } from '@lucide/vue'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
 import { api } from '@/api'
 import { STATUS_RESOLVED } from '@/filters'
+import { byteLength } from '@/newTicket'
 import { state } from '@/session'
 import { fileProblem, limitsText } from '@/uploads'
 import FileChips from './FileChips.vue'
+import RichEditor from './RichEditor.vue'
 
 // The reply box under a ticket the customer may reply to. Checks the reply and its
 // files as the server does, so problems show before anything is uploaded.
@@ -20,7 +21,8 @@ const emit = defineEmits(['sent'])
 
 const uploads = computed(() => state.session.uploads)
 const maxLength = computed(() => state.session.limits.message)
-const draft = ref('')
+const draft = ref({ html: '', text: '' }) // from the editor
+const editor = ref(null)
 const files = ref([])
 const problem = ref('')
 const sent = ref(false)
@@ -42,22 +44,25 @@ function removeFile(i) {
 
 async function send() {
   if (sending.value) return
-  const body = draft.value.trim()
+  const { html, text } = draft.value
   sent.value = false
-  problem.value = !body && !files.value.length
+  problem.value = !text && !files.value.length
     ? 'Please write a reply or attach a file.'
-    : body.length > maxLength.value
+    : byteLength(text) > maxLength.value
       ? `Please keep the reply under ${maxLength.value} characters.`
       : fileProblem(files.value, uploads.value)
   if (problem.value) return
 
   const form = new FormData()
-  form.append('message', body)
+  // Formatted for the thread, plain text for anything that doesn't read HTML.
+  form.append('message', text)
+  if (text) form.append('message_html', html)
   for (const f of files.value) form.append('files', f)
   sending.value = true
   try {
     await api.reply(props.ticketRef, form)
-    draft.value = ''
+    editor.value.clear()
+    draft.value = { html: '', text: '' }
     files.value = []
     sent.value = true
     emit('sent')
@@ -78,16 +83,15 @@ async function send() {
       <AlertDescription class="text-foreground">Your reply was sent. We'll get back to you here and by email.</AlertDescription>
     </Alert>
 
-    <label for="message" class="sr-only">{{ resolved ? 'Reply to reopen this ticket' : 'Reply' }}</label>
+    <span id="reply-label" class="sr-only">{{ resolved ? 'Reply to reopen this ticket' : 'Reply' }}</span>
     <div class="rounded-lg border border-input bg-background focus-within:ring-1 focus-within:ring-ring">
-      <Textarea
+      <RichEditor
         id="message"
-        v-model="draft"
-        name="message"
-        rows="3"
-        :maxlength="maxLength"
+        ref="editor"
+        labelledby="reply-label"
+        content-class="[&_.tiptap]:min-h-16"
         :placeholder="resolved ? 'Reply to reopen this ticket…' : 'Write your reply…'"
-        class="min-h-0 resize-none rounded-none border-0 bg-transparent px-3 pt-3 shadow-none focus-visible:ring-0 dark:bg-transparent"
+        @update="draft = $event"
       />
       <FileChips :files="files" class="px-3 pb-2" @remove="removeFile" />
       <div class="flex flex-wrap items-center justify-between gap-3 px-3 pb-3">

@@ -245,11 +245,14 @@ func (s *Service) threadPage(t TicketSummary, mpage int) ([]Message, int, int, e
 }
 
 // newTicket is the new-ticket form's fields.
-type newTicket struct{ Subject, Body, Project, Priority string }
+type newTicket struct {
+	Subject, Project, Priority string
+	Msg                        message
+}
 
 func newTicketOf(r *fastglue.Request) newTicket {
 	v := func(k string) string { return strings.TrimSpace(string(r.RequestCtx.FormValue(k))) }
-	return newTicket{Subject: v("subject"), Body: v("message"), Project: v("project"), Priority: v("priority")}
+	return newTicket{Subject: v("subject"), Msg: messageOf(r), Project: v("project"), Priority: v("priority")}
 }
 
 // checkNewTicket checks a new ticket from a session that may create tickets, and
@@ -261,9 +264,11 @@ func (s *Service) checkNewTicket(r *fastglue.Request, sess Session, n newTicket)
 		problem = "Please add a subject."
 	case len(n.Subject) > maxSubjectLen:
 		problem = fmt.Sprintf("Please keep the subject under %d characters.", maxSubjectLen)
-	case n.Body == "":
+	case n.Msg.TooLarge:
+		problem = fmt.Sprintf("Please keep the message under %d characters.", maxMessageLen)
+	case n.Msg.Text == "":
 		problem = "Please describe the problem or question."
-	case len(n.Body) > maxMessageLen:
+	case len(n.Msg.Text) > maxMessageLen:
 		problem = fmt.Sprintf("Please keep the message under %d characters.", maxMessageLen)
 	}
 	_, projectOK := sess.ProjectName(n.Project)
@@ -300,7 +305,7 @@ func (s *Service) createTicket(sess Session, n newTicket, files []Upload) (strin
 	if PriorityEligible(tier, s.eligibleTiers) && contains(PriorityChoices, n.Priority) {
 		attrs[AttrRequestedPriority] = n.Priority
 	}
-	ref, err := s.backend.CreateTicket(sess.ContactID, n.Subject, textToHTML(n.Body), attrs, []string{InstanceTag(sess.Instance)}, files)
+	ref, err := s.backend.CreateTicket(sess.ContactID, n.Subject, n.Msg.HTML, attrs, []string{InstanceTag(sess.Instance)}, files)
 	if err != nil {
 		s.lo.Error("my-tickets: creating ticket", "error", err)
 		return "", err
@@ -311,13 +316,15 @@ func (s *Service) createTicket(sess Session, n newTicket, files []Upload) (strin
 
 // checkReply checks a reply and reads its attachments. It returns the files, or a
 // problem to show the customer.
-func (s *Service) checkReply(r *fastglue.Request, body string) ([]Upload, string) {
+func (s *Service) checkReply(r *fastglue.Request, m message) ([]Upload, string) {
 	files, problem := s.readUploads(r)
 	switch {
 	case problem != "":
-	case body == "" && len(files) == 0:
+	case m.TooLarge:
+		problem = fmt.Sprintf("Please keep the reply under %d characters.", maxMessageLen)
+	case m.Text == "" && len(files) == 0:
 		problem = "Please write a reply or attach a file."
-	case len(body) > maxMessageLen:
+	case len(m.Text) > maxMessageLen:
 		problem = fmt.Sprintf("Please keep the reply under %d characters.", maxMessageLen)
 	}
 	if problem != "" {
@@ -327,12 +334,8 @@ func (s *Service) checkReply(r *fastglue.Request, body string) ([]Upload, string
 }
 
 // addReply adds a checked reply to a ticket the session may reply to.
-func (s *Service) addReply(sess Session, t TicketSummary, body string, files []Upload) error {
-	html := ""
-	if body != "" {
-		html = textToHTML(body)
-	}
-	if err := s.backend.AddReply(sess.ContactID, t.UUID, html, files); err != nil {
+func (s *Service) addReply(sess Session, t TicketSummary, m message, files []Upload) error {
+	if err := s.backend.AddReply(sess.ContactID, t.UUID, m.HTML, files); err != nil {
 		s.lo.Error("my-tickets: adding reply", "error", err)
 		return err
 	}
