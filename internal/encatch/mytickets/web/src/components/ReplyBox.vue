@@ -1,13 +1,14 @@
 <script setup>
 import { computed, ref } from 'vue'
-import { Paperclip, ShieldAlert, X } from '@lucide/vue'
+import { Paperclip, ShieldAlert } from '@lucide/vue'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { api } from '@/api'
 import { STATUS_RESOLVED } from '@/filters'
 import { state } from '@/session'
-import { fileProblem, fileSize, limitsText } from '@/uploads'
+import { fileProblem, limitsText } from '@/uploads'
+import FileChips from './FileChips.vue'
 
 // The reply box under a ticket the customer may reply to. Checks the reply and its
 // files as the server does, so problems show before anything is uploaded.
@@ -88,16 +89,7 @@ async function send() {
         :placeholder="resolved ? 'Reply to reopen this ticket…' : 'Write your reply…'"
         class="min-h-0 resize-none rounded-none border-0 bg-transparent px-3 pt-3 shadow-none focus-visible:ring-0 dark:bg-transparent"
       />
-      <ul v-if="files.length" class="flex flex-wrap gap-2 px-3 pb-2" aria-label="Files to attach">
-        <li v-for="(f, i) in files" :key="`${f.name}-${i}`" class="inline-flex max-w-64 items-center gap-1.5 rounded-md border bg-muted/50 py-1 pl-2.5 pr-1 text-xs">
-          <Paperclip class="size-3.5 shrink-0 text-muted-foreground" />
-          <span class="truncate">{{ f.name }}</span>
-          <span class="shrink-0 text-muted-foreground">{{ fileSize(f.size) }}</span>
-          <button type="button" class="rounded-sm p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground" :aria-label="`Remove ${f.name}`" @click="removeFile(i)">
-            <X class="size-3.5" />
-          </button>
-        </li>
-      </ul>
+      <FileChips :files="files" class="px-3 pb-2" @remove="removeFile" />
       <div class="flex flex-wrap items-center justify-between gap-3 px-3 pb-3">
         <template v-if="uploads">
           <Button
