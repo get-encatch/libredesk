@@ -231,6 +231,19 @@ func newSampleBackend() *sampleBackend {
 		cust("Meera Shah", "<p>Please update our billing address on future invoices.</p>", 4))
 	add("139", 2, "Export responses to CSV is slow", "Open", "local-18", "Website", ago(2), ago(1),
 		cust("Ravi Kumar", "<p>CSV export for our largest form takes several minutes. Is there a faster way?</p>", 2))
+	// A long thread (24 messages), so thread paging shows: 10 per page, newest first.
+	long := make([]mytickets.Message, 0, 24)
+	for i := 1; i <= 24; i++ {
+		h := 200 - i*6
+		if i%2 == 1 {
+			long = append(long, cust("Anita Rao", fmt.Sprintf("<p>Update %d from our side: the webhook retried and we captured the payload.</p><blockquote>Earlier: delivery failed with 502.</blockquote>", i), h))
+		} else {
+			long = append(long, agent("Rahul Gorad", fmt.Sprintf("<p>Thanks, reply %d. Could you try <code>retry=3</code> and share the logs?</p><ul><li>Check the signing secret</li><li>Check the endpoint URL</li></ul>", i), h))
+		}
+	}
+	long[2].Attachments = []mytickets.Attachment{{Name: "payload-sample.json", URL: "/preview-uploads/sample"}}
+	add("129", 1, "Webhook retries and delivery logs", "Waiting on customer", "local-17", "Mobile app", ago(200), ago(56), long...)
+	b.files["sample"] = mytickets.Upload{Name: "payload-sample.json", ContentType: "application/json", Data: []byte(`{"event":"response.created"}`)}
 	// Acme (org 7): one ticket in its iOS app project, raised by Acme's Kiran.
 	b.tickets["140"] = &mytickets.TicketSummary{UUID: "u140", ReferenceNumber: "140", Subject: "Survey targeting on iPad", InternalStatus: "Open",
 		ContactID: 4, RaisedBy: "Kiran Das", OrgID: "local-7", ProjectID: "local-31", ProjectName: "iOS app", CreatedAt: ago(30), UpdatedAt: ago(6)}

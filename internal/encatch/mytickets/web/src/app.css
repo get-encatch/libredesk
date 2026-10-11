@@ -147,3 +147,16 @@
   * { @apply border-border outline-ring/50; }
   body { @apply bg-background text-foreground font-sans antialiased; letter-spacing: var(--tracking-normal); }
 }
+
+@layer components {
+  /* Customer-visible message HTML, sanitised by the server. */
+  .message-body { @apply text-sm leading-relaxed break-words; }
+  .message-body p { @apply my-2; }
+  .message-body a { @apply text-primary underline underline-offset-4; }
+  .message-body img { @apply h-auto max-w-full rounded-md; }
+  .message-body blockquote { @apply my-2 border-l-2 pl-3 text-muted-foreground; }
+  .message-body ul { @apply my-2 list-disc pl-5; }
+  .message-body ol { @apply my-2 list-decimal pl-5; }
+  .message-body pre { @apply my-2 overflow-x-auto rounded-md bg-muted p-3 text-xs; }
+  .message-body code { @apply font-mono; }
+}

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, api, query, request, sessionEnded, setCsrf } from './api'
+import { ApiError, api, query, request, sessionEnded, setCsrf, staleCSRF } from './api'
 
 function respond(status, body) {
   return vi.fn(async () => ({
@@ -16,6 +16,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
   setCsrf('')
   sessionEnded(() => {})
+  staleCSRF(() => {})
 })
 
 describe('request', () => {
@@ -53,6 +54,14 @@ describe('request', () => {
     sessionEnded(ended)
     await expect(api.session()).rejects.toBeInstanceOf(ApiError)
     expect(ended).toHaveBeenCalledWith(expect.objectContaining({ code: 'session_ended', message: 'Gone' }))
+  })
+
+  it('reports a stale CSRF token', async () => {
+    vi.stubGlobal('fetch', respond(403, { error: { code: 'csrf', message: 'Your page expired. Please reload and try again.' } }))
+    const stale = vi.fn()
+    staleCSRF(stale)
+    await expect(request('POST', '/org')).rejects.toMatchObject({ code: 'csrf' })
+    expect(stale).toHaveBeenCalledTimes(1)
   })
 
   it('explains bodies the proxy refused and non-JSON errors', async () => {

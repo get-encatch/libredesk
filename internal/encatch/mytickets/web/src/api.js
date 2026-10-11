@@ -13,6 +13,7 @@ export class ApiError extends Error {
 const base = '/my-tickets/api'
 let csrf = ''
 let onSessionEnded = () => {}
+let onStaleCSRF = () => {}
 
 export function setCsrf(token) {
   csrf = token || ''
@@ -21,6 +22,12 @@ export function setCsrf(token) {
 // sessionEnded registers what to do when any call finds the session gone.
 export function sessionEnded(fn) {
   onSessionEnded = fn
+}
+
+// staleCSRF registers what to do when a change is refused for its CSRF token: the
+// session cookie was replaced, e.g. by signing in again in another tab.
+export function staleCSRF(fn) {
+  onStaleCSRF = fn
 }
 
 // query drops empty values, so URLs stay clean.
@@ -62,6 +69,7 @@ export async function request(method, path, { params, json, form } = {}) {
     }
     const err = new ApiError(res.status, e.code, e.message)
     if (err.code === 'session_ended') onSessionEnded(err)
+    if (err.code === 'csrf') onStaleCSRF(err)
     throw err
   }
   return payload.data
