@@ -215,34 +215,43 @@ type inboxRow struct {
 	Sender string
 }
 
-// loadList reads the list filters from the query string and loads the inbox
-// list. The list page and the ticket page both show it.
-func (s *Service) loadList(r *fastglue.Request, sess Session) (map[string]any, error) {
-	args := r.RequestCtx.QueryArgs()
-	status := string(args.Peek("status"))
-	if status != StatusOpen && status != StatusWaitingYou && status != StatusResolved {
-		status = ""
+// listFilter is the inbox list's filters and page.
+type listFilter struct {
+	Status, Project, ProjectName, Search string
+	Page                                 int
+}
+
+// listFilterOf reads the list filters from a query string, dropping anything invalid
+// (an unknown status, a project the session can't see).
+func listFilterOf(args *fasthttp.Args, sess Session) listFilter {
+	f := listFilter{Status: string(args.Peek("status")), Project: string(args.Peek("project"))}
+	if f.Status != StatusOpen && f.Status != StatusWaitingYou && f.Status != StatusResolved {
+		f.Status = ""
 	}
-	project := string(args.Peek("project"))
-	projectName, ok := sess.ProjectName(project)
-	if !ok {
-		project = ""
+	var ok bool
+	if f.ProjectName, ok = sess.ProjectName(f.Project); !ok {
+		f.Project = ""
 	}
-	search := strings.TrimSpace(string(args.Peek("q")))
-	if r := []rune(search); len(r) > maxSearchLen {
-		search = string(r[:maxSearchLen])
+	f.Search = strings.TrimSpace(string(args.Peek("q")))
+	if r := []rune(f.Search); len(r) > maxSearchLen {
+		f.Search = string(r[:maxSearchLen])
 	}
-	page := min(max(args.GetUintOrZero("page"), 1), maxPage)
+	f.Page = min(max(args.GetUintOrZero("page"), 1), maxPage)
+	return f
+}
+
+// listTickets loads one page of the inbox list, and whether there is an older page.
+func (s *Service) listTickets(sess Session, f listFilter) ([]inboxRow, bool, error) {
 	// One extra row says whether there is an older page, without counting the org's tickets.
 	tickets, err := s.backend.ListTickets(ListQuery{
 		Scope: sess.Scope, ContactID: sess.ContactID, OrgID: sess.OrgID, ProjectIDs: sess.ProjectIDs(),
-		Status: status, ProjectID: project, Search: search,
-		Limit: defaultPerPage + 1, Offset: (page - 1) * defaultPerPage,
+		Status: f.Status, ProjectID: f.Project, Search: f.Search,
+		Limit: defaultPerPage + 1, Offset: (f.Page - 1) * defaultPerPage,
 	})
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	hasOlder := len(tickets) > defaultPerPage && page < maxPage
+	hasOlder := len(tickets) > defaultPerPage && f.Page < maxPage
 	if len(tickets) > defaultPerPage {
 		tickets = tickets[:defaultPerPage]
 	}
@@ -250,6 +259,18 @@ func (s *Service) loadList(r *fastglue.Request, sess Session) (map[string]any, e
 	for _, t := range tickets {
 		t = withCurrentNames(sess, t)
 		rows = append(rows, inboxRow{t, CustomerStatus(t.InternalStatus), sender(sess, t)})
+	}
+	return rows, hasOlder, nil
+}
+
+// loadList reads the list filters from the query string and loads the inbox
+// list. The list page and the ticket page both show it.
+func (s *Service) loadList(r *fastglue.Request, sess Session) (map[string]any, error) {
+	f := listFilterOf(r.RequestCtx.QueryArgs(), sess)
+	status, project, projectName, search, page := f.Status, f.Project, f.ProjectName, f.Search, f.Page
+	rows, hasOlder, err := s.listTickets(sess, f)
+	if err != nil {
+		return nil, err
 	}
 	// Ticket links carry the filters and page so the list stays the same while reading.
 	query := func(page int) template.URL {
@@ -303,16 +324,23 @@ func (s *Service) View(r *fastglue.Request) error {
 	return s.renderTicket(r, sess, t, "", "")
 }
 
-// renderTicket shows a ticket's thread, with an optional problem and the
-// reply draft to keep after a rejected reply.
-func (s *Service) renderTicket(r *fastglue.Request, sess Session, t TicketSummary, problem, draft string) error {
-	// m picks the page of the thread: 1 (the default) is the newest messages.
-	mpage := max(r.RequestCtx.QueryArgs().GetUintOrZero("m"), 1)
+// threadPage loads page mpage of a ticket's thread (1, the default, is the newest
+// messages; a page past the oldest shows the oldest). It returns the messages, how many
+// there are in all, and the page shown.
+func (s *Service) threadPage(t TicketSummary, mpage int) ([]Message, int, int, error) {
+	mpage = max(mpage, 1)
 	msgs, total, err := s.backend.Messages(t.UUID, mpage, messagesPerPage)
-	if err == nil && len(msgs) == 0 && total > 0 && mpage > 1 { // past the oldest page: show the oldest
+	if err == nil && len(msgs) == 0 && total > 0 && mpage > 1 {
 		mpage = (total + messagesPerPage - 1) / messagesPerPage
 		msgs, total, err = s.backend.Messages(t.UUID, mpage, messagesPerPage)
 	}
+	return msgs, total, mpage, err
+}
+
+// renderTicket shows a ticket's thread, with an optional problem and the
+// reply draft to keep after a rejected reply.
+func (s *Service) renderTicket(r *fastglue.Request, sess Session, t TicketSummary, problem, draft string) error {
+	msgs, total, mpage, err := s.threadPage(t, r.RequestCtx.QueryArgs().GetUintOrZero("m"))
 	if err != nil {
 		s.lo.Error("my-tickets: loading messages", "error", err)
 		return s.renderError(r, fasthttp.StatusInternalServerError, "We couldn't load this ticket. Please try again.")
@@ -395,30 +423,48 @@ func (s *Service) Create(r *fastglue.Request) error {
 	if !CSRFValid(sess, string(r.RequestCtx.FormValue("csrf"))) {
 		return s.renderError(r, fasthttp.StatusForbidden, "Your form expired. Please go back and try again.")
 	}
-	subject := strings.TrimSpace(string(r.RequestCtx.FormValue("subject")))
-	body := strings.TrimSpace(string(r.RequestCtx.FormValue("message")))
-	project := strings.TrimSpace(string(r.RequestCtx.FormValue("project")))
-	priority := strings.TrimSpace(string(r.RequestCtx.FormValue("priority")))
-
-	var problem string
-	switch {
-	case subject == "":
-		problem = "Please add a subject."
-	case len(subject) > maxSubjectLen:
-		problem = fmt.Sprintf("Please keep the subject under %d characters.", maxSubjectLen)
-	case body == "":
-		problem = "Please describe the problem or question."
-	case len(body) > maxMessageLen:
-		problem = fmt.Sprintf("Please keep the message under %d characters.", maxMessageLen)
-	}
+	n := newTicketOf(r)
 	if !sess.CanCreate() {
 		return s.renderReadOnly(r)
 	}
-	projectName, projectOK := sess.ProjectName(project)
+	files, problem := s.checkNewTicket(r, sess, n)
+	if problem != "" {
+		return s.renderNewForm(r, sess, n.Subject, n.Body, n.Project, n.Priority, problem)
+	}
+	ref, err := s.createTicket(sess, n, files)
+	if err != nil {
+		return s.renderNewForm(r, sess, n.Subject, n.Body, n.Project, n.Priority, "We couldn't create your ticket. Please try again.")
+	}
+	return s.redirect(r, basePath+"/"+ref)
+}
+
+// newTicket is the new-ticket form's fields.
+type newTicket struct{ Subject, Body, Project, Priority string }
+
+func newTicketOf(r *fastglue.Request) newTicket {
+	v := func(k string) string { return strings.TrimSpace(string(r.RequestCtx.FormValue(k))) }
+	return newTicket{Subject: v("subject"), Body: v("message"), Project: v("project"), Priority: v("priority")}
+}
+
+// checkNewTicket checks a new ticket from a session that may create tickets, and
+// reads its attachments. It returns the files, or a problem to show the customer.
+func (s *Service) checkNewTicket(r *fastglue.Request, sess Session, n newTicket) ([]Upload, string) {
+	var problem string
 	switch {
-	case project == "" && !sess.CanManageOrg():
+	case n.Subject == "":
+		problem = "Please add a subject."
+	case len(n.Subject) > maxSubjectLen:
+		problem = fmt.Sprintf("Please keep the subject under %d characters.", maxSubjectLen)
+	case n.Body == "":
+		problem = "Please describe the problem or question."
+	case len(n.Body) > maxMessageLen:
+		problem = fmt.Sprintf("Please keep the message under %d characters.", maxMessageLen)
+	}
+	_, projectOK := sess.ProjectName(n.Project)
+	switch {
+	case n.Project == "" && !sess.CanManageOrg():
 		problem = "Please choose one of your projects."
-	case project != "" && (!projectOK || !sess.CanManageProject(project)):
+	case n.Project != "" && (!projectOK || !sess.CanManageProject(n.Project)):
 		problem = "Please choose one of your projects."
 	}
 	files, fileProblem := s.readUploads(r)
@@ -426,9 +472,13 @@ func (s *Service) Create(r *fastglue.Request) error {
 		problem = fileProblem
 	}
 	if problem != "" {
-		return s.renderNewForm(r, sess, subject, body, project, priority, problem)
+		return nil, problem
 	}
+	return files, ""
+}
 
+// createTicket creates a checked new ticket and returns its reference number.
+func (s *Service) createTicket(sess Session, n newTicket, files []Upload) (string, error) {
 	attrs := map[string]any{
 		AttrOrgID: sess.OrgID, AttrOrgName: sess.OrgName, AttrSourceApp: sess.Issuer, AttrInstance: sess.Instance,
 	}
@@ -436,20 +486,21 @@ func (s *Service) Create(r *fastglue.Request) error {
 	if tier != "" {
 		attrs[AttrTicketTier] = tier
 	}
-	if project != "" {
-		attrs[AttrProjectID] = project
+	if n.Project != "" {
+		projectName, _ := sess.ProjectName(n.Project)
+		attrs[AttrProjectID] = n.Project
 		attrs[AttrProjectName] = projectName
 	}
-	if PriorityEligible(tier, s.eligibleTiers) && contains(PriorityChoices, priority) {
-		attrs[AttrRequestedPriority] = priority
+	if PriorityEligible(tier, s.eligibleTiers) && contains(PriorityChoices, n.Priority) {
+		attrs[AttrRequestedPriority] = n.Priority
 	}
-	ref, err := s.backend.CreateTicket(sess.ContactID, subject, textToHTML(body), attrs, []string{InstanceTag(sess.Instance)}, files)
+	ref, err := s.backend.CreateTicket(sess.ContactID, n.Subject, textToHTML(n.Body), attrs, []string{InstanceTag(sess.Instance)}, files)
 	if err != nil {
 		s.lo.Error("my-tickets: creating ticket", "error", err)
-		return s.renderNewForm(r, sess, subject, body, project, priority, "We couldn't create your ticket. Please try again.")
+		return "", err
 	}
 	s.lo.Info("my-tickets: ticket created", "ref", ref, "iss", sess.Issuer, "org", sess.OrgID, "contact_id", sess.ContactID, "files", len(files))
-	return s.redirect(r, basePath+"/"+ref)
+	return ref, nil
 }
 
 // Reply adds a customer reply to a ticket.
@@ -469,23 +520,11 @@ func (s *Service) Reply(r *fastglue.Request) error {
 		return s.renderTicket(r, sess, t, "You have read-only access to this ticket, so you can't reply.", "")
 	}
 	body := strings.TrimSpace(string(r.RequestCtx.FormValue("message")))
-	files, problem := s.readUploads(r)
-	switch {
-	case problem != "":
-	case body == "" && len(files) == 0:
-		problem = "Please write a reply or attach a file."
-	case len(body) > maxMessageLen:
-		problem = fmt.Sprintf("Please keep the reply under %d characters.", maxMessageLen)
-	}
+	files, problem := s.checkReply(r, body)
 	if problem != "" {
 		return s.renderTicket(r, sess, t, problem, body)
 	}
-	html := ""
-	if body != "" {
-		html = textToHTML(body)
-	}
-	if err := s.backend.AddReply(sess.ContactID, t.UUID, html, files); err != nil {
-		s.lo.Error("my-tickets: adding reply", "error", err)
+	if err := s.addReply(sess, t, body, files); err != nil {
 		return s.renderTicket(r, sess, t, "We couldn't send your reply. Please try again.", body)
 	}
 	// Back to the ticket, keeping the inbox filters the form carried.
@@ -496,6 +535,36 @@ func (s *Service) Reply(r *fastglue.Request) error {
 		}
 	}
 	return s.redirect(r, basePath+"/"+t.ReferenceNumber+"?"+back.Encode())
+}
+
+// checkReply checks a reply and reads its attachments. It returns the files, or a
+// problem to show the customer.
+func (s *Service) checkReply(r *fastglue.Request, body string) ([]Upload, string) {
+	files, problem := s.readUploads(r)
+	switch {
+	case problem != "":
+	case body == "" && len(files) == 0:
+		problem = "Please write a reply or attach a file."
+	case len(body) > maxMessageLen:
+		problem = fmt.Sprintf("Please keep the reply under %d characters.", maxMessageLen)
+	}
+	if problem != "" {
+		return nil, problem
+	}
+	return files, ""
+}
+
+// addReply adds a checked reply to a ticket the session may reply to.
+func (s *Service) addReply(sess Session, t TicketSummary, body string, files []Upload) error {
+	html := ""
+	if body != "" {
+		html = textToHTML(body)
+	}
+	if err := s.backend.AddReply(sess.ContactID, t.UUID, html, files); err != nil {
+		s.lo.Error("my-tickets: adding reply", "error", err)
+		return err
+	}
+	return nil
 }
 
 // Asset serves an embedded stylesheet or logo. URLs carry ?v=<hash>, so they
@@ -688,10 +757,11 @@ func (s *Service) orgTier(sess Session) string {
 
 // uploadView describes the attachment limits for the forms; nil hides the file field.
 type uploadView struct {
-	MaxMB      int
-	MaxTotalMB int // 0 when it wouldn't limit anything beyond MaxFiles × MaxMB
-	MaxFiles   int
-	Accept     string // the file input's accept attribute, e.g. ".pdf,.png"
+	MaxMB      int      `json:"max_mb"`
+	MaxTotalMB int      `json:"max_total_mb"` // 0 when it wouldn't limit anything beyond MaxFiles × MaxMB
+	MaxFiles   int      `json:"max_files"`
+	Accept     string   `json:"accept"`     // the file input's accept attribute, e.g. ".pdf,.png"; "" allows any
+	Extensions []string `json:"extensions"` // lowercase, without dots; ["*"] allows any
 }
 
 func (s *Service) uploadInfo() *uploadView {
@@ -702,7 +772,7 @@ func (s *Service) uploadInfo() *uploadView {
 	if len(l.Extensions) == 0 || l.MaxMB <= 0 {
 		return nil // nothing can be attached
 	}
-	v := &uploadView{MaxMB: l.MaxMB, MaxFiles: maxFiles}
+	v := &uploadView{MaxMB: l.MaxMB, MaxFiles: maxFiles, Extensions: l.Extensions}
 	if l.MaxTotalMB > 0 && l.MaxTotalMB < maxFiles*l.MaxMB {
 		v.MaxTotalMB = l.MaxTotalMB
 	}
@@ -852,7 +922,7 @@ func sender(sess Session, t TicketSummary) string {
 	case t.LastAuthorID == 0 && t.Preview == "":
 		return t.RaisedBy
 	case !t.LastFromCustomer:
-		return "Encatch Support"
+		return supportName
 	case t.LastAuthorID == sess.ContactID:
 		return "You"
 	case t.LastAuthor != "":

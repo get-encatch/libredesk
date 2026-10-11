@@ -78,6 +78,10 @@ func main() {
 	g.POST("/my-tickets/org", svc.SwitchOrg)
 	g.GET("/my-tickets/{ref}", svc.View)
 	g.POST("/my-tickets/{ref}/reply", svc.Reply)
+	for _, rt := range mytickets.APIRoutes {
+		h := rt.Handler
+		rt.Register(g, func(r *fastglue.Request) error { return h(svc, r) })
+	}
 	g.GET("/preview-uploads/{id}", backend.serveUpload)
 	// The Geist font, as libredesk serves it.
 	fonts := fasthttp.FSHandler(repoRoot()+"/static/public/static", 3)
