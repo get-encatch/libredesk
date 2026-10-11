@@ -3,7 +3,6 @@ package mytickets
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/valyala/fasthttp"
@@ -372,8 +371,8 @@ func (s *Service) APINewTicket(r *fastglue.Request) error {
 	return s.apiOK(r, fasthttp.StatusOK, out)
 }
 
-// APICreate raises a ticket. Multipart (or urlencoded) form: subject, message, project,
-// priority and files.
+// APICreate raises a ticket. Multipart (or urlencoded) form: subject, message (plain
+// text) or message_html (formatted, see format.go), project, priority and files.
 func (s *Service) APICreate(r *fastglue.Request) error {
 	sess, ok := s.apiAuth(r, true)
 	if !ok {
@@ -394,7 +393,8 @@ func (s *Service) APICreate(r *fastglue.Request) error {
 	return s.apiOK(r, fasthttp.StatusCreated, map[string]string{"ref": ref})
 }
 
-// APIReply adds a reply to a ticket. Multipart (or urlencoded) form: message and files.
+// APIReply adds a reply to a ticket. Multipart (or urlencoded) form: message (plain
+// text) or message_html (formatted, see format.go) and files.
 func (s *Service) APIReply(r *fastglue.Request) error {
 	sess, ok := s.apiAuth(r, true)
 	if !ok {
@@ -407,12 +407,12 @@ func (s *Service) APIReply(r *fastglue.Request) error {
 	if !sess.CanManageTicket(t) {
 		return s.apiFail(r, fasthttp.StatusForbidden, errReadOnly, "You have read-only access to this ticket, so you can't reply.")
 	}
-	body := strings.TrimSpace(string(r.RequestCtx.FormValue("message")))
-	files, problem := s.checkReply(r, body)
+	m := messageOf(r)
+	files, problem := s.checkReply(r, m)
 	if problem != "" {
 		return s.apiFail(r, fasthttp.StatusUnprocessableEntity, errInvalid, problem)
 	}
-	if err := s.addReply(sess, t, body, files); err != nil {
+	if err := s.addReply(sess, t, m, files); err != nil {
 		return s.apiFail(r, fasthttp.StatusInternalServerError, errServer, "We couldn't send your reply. Please try again.")
 	}
 	return s.apiOK(r, fasthttp.StatusCreated, map[string]bool{"sent": true})
