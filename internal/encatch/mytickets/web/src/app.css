@@ -1,6 +1,5 @@
 /* encatch: My Tickets styles. Tailwind v4 with shadcn-vue's token layout and Encatch's
-   design tokens (the same values as ui/app.css, which styles the server-rendered pages
-   until the Vue app replaces them). */
+   design tokens. */
 @import "tailwindcss";
 @import "tw-animate-css";
 

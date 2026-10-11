@@ -29,8 +29,6 @@ export default defineConfig({
   server: {
     port: 8791,
     strictPort: true,
-    // The Encatch logos live in ../static, next to the Go code.
-    fs: { allow: ['..'] },
     proxy: {
       // Keep the Host header, so the backend's redirects come back to this dev server.
       ...Object.fromEntries(
@@ -42,7 +40,8 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: 'dist',
+    // Go embeds this (spa.go); see build/README.md.
+    outDir: 'build/app',
     emptyOutDir: true,
   },
   test: {

@@ -1,5 +1,6 @@
 # encatch: tests and builds the My Tickets Vue app (internal/encatch/mytickets/web), an
-# independent build with its own package.json and lockfile.
+# independent build with its own package.json and lockfile, then checks that Go serves
+# the build (the release embeds it the same way).
 name: My Tickets web
 
 on:
@@ -7,15 +8,13 @@ on:
     branches: [encatch/main]
     paths:
       - "internal/encatch/mytickets/web/**"
-      - "internal/encatch/mytickets/ui/app.css"
-      - "internal/encatch/mytickets/static/**"
+      - "internal/encatch/mytickets/spa*.go"
       - ".github/workflows/encatch-mytickets-web.yml"
   push:
     branches: [encatch/main]
     paths:
       - "internal/encatch/mytickets/web/**"
-      - "internal/encatch/mytickets/ui/app.css"
-      - "internal/encatch/mytickets/static/**"
+      - "internal/encatch/mytickets/spa*.go"
       - ".github/workflows/encatch-mytickets-web.yml"
 
 permissions:
@@ -45,3 +44,13 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.0"
+
+      - name: Go serves the build
+        working-directory: internal/encatch/mytickets
+        env:
+          MY_TICKETS_REQUIRE_BUILD: "1" # fail, not skip, if the build isn't embedded
+        run: go test -count=1 -run 'TestEmbeddedBuild|TestApp' -v .

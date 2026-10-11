@@ -1,21 +1,15 @@
 package mytickets
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
-	"embed"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"html"
-	"html/template"
 	"io"
+	"io/fs"
 	"mime/multipart"
-	"net/url"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -26,37 +20,10 @@ import (
 	"github.com/zerodha/logf"
 )
 
-//go:embed templates/*.html
-var templateFS embed.FS
-
-// static/ holds app.css (built from ui/ with Encatch's design tokens; run
-// ui/build.sh after changing templates), the Encatch logos and theme.js (the light/dark
-// switch without a reload; the pages work without it).
-//
-//go:embed static/app.css static/logo-light.svg static/logo-dark.png static/theme.js
-var staticFS embed.FS
-
-var assetTypes = map[string]string{
-	"app.css":        "text/css; charset=utf-8",
-	"logo-light.svg": "image/svg+xml",
-	"logo-dark.png":  "image/png",
-	"theme.js":       "text/javascript; charset=utf-8",
-}
-
-// assetVersion busts browser caches when any asset changes.
-var assetVersion = func() string {
-	h := sha256.New()
-	for _, name := range []string{"app.css", "logo-light.svg", "logo-dark.png", "theme.js"} {
-		b, _ := staticFS.ReadFile("static/" + name)
-		h.Write(b)
-	}
-	return hex.EncodeToString(h.Sum(nil))[:12]
-}()
-
 const (
 	cookieName = "libredesk_my_tickets"
 	// The visitor's light/dark choice ("light" or "dark"; absent = follow the device).
-	// Not HttpOnly: theme.js sets it too. Holds nothing sensitive.
+	// Not HttpOnly: the app's toggle sets it; the server reads it to render data-theme.
 	themeCookie    = "libredesk_my_tickets_theme"
 	basePath       = "/my-tickets"
 	maxSubjectLen  = 200
@@ -70,7 +37,8 @@ const (
 	maxFiles        = 5 // attachments per ticket or reply
 )
 
-// Service holds My Tickets' dependencies and serves its pages.
+// Service holds My Tickets' dependencies and serves its sign-in, the Vue app
+// (spa.go) and the JSON API (api.go).
 type Service struct {
 	verifier      *Verifier
 	store         *Store
@@ -78,9 +46,9 @@ type Service struct {
 	eligibleTiers []string
 	sessionTTL    time.Duration
 	lo            *logf.Logger
-	tmpl          *template.Template
 	sanitize      *bluemonday.Policy
 	uploadLimits  func() UploadLimits
+	app           fs.FS // the built Vue app; nil when it isn't built
 }
 
 // Opts configures a Service.
@@ -93,43 +61,26 @@ type Opts struct {
 	Logger        *logf.Logger
 	// UploadLimits returns libredesk's current upload settings. Nil disables attachments.
 	UploadLimits func() UploadLimits
+	// App holds the built Vue app (index.html and assets/); nil means the embedded build.
+	App fs.FS
 }
 
 func New(o Opts) (*Service, error) {
-	funcs := template.FuncMap{
-		"dict": func(kv ...any) map[string]any {
-			m := make(map[string]any, len(kv)/2)
-			for i := 0; i+1 < len(kv); i += 2 {
-				if k, ok := kv[i].(string); ok {
-					m[k] = kv[i+1]
-				}
-			}
-			return m
-		},
-		"date":         func(t time.Time) string { return t.In(ist).Format("2 Jan 2006, 15:04") },
-		"assetVersion": func() string { return assetVersion },
-		"initials":     initials,
-		"mailDate":     func(t time.Time) string { return mailDate(t, time.Now()) },
+	app := o.App
+	if app == nil {
+		app = builtApp
 	}
-	tmpl, err := template.New("").Funcs(funcs).ParseFS(templateFS, "templates/*.html")
-	if err != nil {
-		return nil, fmt.Errorf("parsing my-tickets templates: %w", err)
+	if app == nil {
+		o.Logger.Error("my-tickets: the Vue app isn't built into the binary; /my-tickets will answer 503 (build it with pnpm in internal/encatch/mytickets/web)")
 	}
 	return &Service{
 		verifier: o.Verifier, store: o.Store, backend: o.Backend, eligibleTiers: o.EligibleTiers,
-		sessionTTL: o.SessionTTL, lo: o.Logger, tmpl: tmpl, sanitize: bluemonday.UGCPolicy(),
-		uploadLimits: o.UploadLimits,
+		sessionTTL: o.SessionTTL, lo: o.Logger, sanitize: bluemonday.UGCPolicy(),
+		uploadLimits: o.UploadLimits, app: app,
 	}, nil
 }
 
-var ist = func() *time.Location {
-	if l, err := time.LoadLocation("Asia/Kolkata"); err == nil {
-		return l
-	}
-	return time.FixedZone("IST", 5*3600+1800)
-}()
-
-// ---- pages ----
+// ---- sign-in ----
 
 // Login exchanges a token (query or form field "token") for a session.
 func (s *Service) Login(r *fastglue.Request) error {
@@ -138,30 +89,30 @@ func (s *Service) Login(r *fastglue.Request) error {
 		token = string(r.RequestCtx.FormValue("token"))
 	}
 	if token == "" {
-		return s.renderError(r, fasthttp.StatusBadRequest, "This link is missing its sign-in token. Open Support again from your Encatch app.")
+		return s.signInFailed(r, signInMissing)
 	}
 	claims, err := s.verifier.Verify(token)
 	if err != nil {
 		s.lo.Warn("my-tickets: token rejected", "error", err, "ip", r.RequestCtx.RemoteIP().String())
-		return s.renderError(r, fasthttp.StatusUnauthorized, "This sign-in link is invalid or has expired. Open Support again from your Encatch app.")
+		return s.signInFailed(r, signInInvalid)
 	}
 	ctx, cancel := redisCtx()
 	defer cancel()
 	fresh, err := s.store.UseJTI(ctx, claims.Issuer, claims.ID, claims.ExpiresAt.Add(s.verifier.Leeway))
 	if err != nil {
 		s.lo.Error("my-tickets: recording jti", "error", err)
-		return s.renderError(r, fasthttp.StatusInternalServerError, "Something went wrong. Please try again.")
+		return s.signInFailed(r, signInError)
 	}
 	if !fresh {
 		s.lo.Warn("my-tickets: token replayed", "iss", claims.Issuer, "jti", claims.ID)
-		return s.renderError(r, fasthttp.StatusUnauthorized, "This sign-in link has already been used. Open Support again from your Encatch app.")
+		return s.signInFailed(r, signInUsed)
 	}
 
 	first, last := splitName(claims.Name, claims.Email)
 	contactID, err := s.backend.ResolveContact(string(claims.ExternalUserID), claims.Email, first, last)
 	if err != nil {
 		s.lo.Error("my-tickets: resolving contact", "error", err)
-		return s.renderError(r, fasthttp.StatusInternalServerError, "Something went wrong. Please try again.")
+		return s.signInFailed(r, signInError)
 	}
 	sess := Session{
 		ContactID: contactID, Email: claims.Email, Name: strings.TrimSpace(first + " " + last),
@@ -190,7 +141,7 @@ func (s *Service) Login(r *fastglue.Request) error {
 	sid, err := s.store.Create(ctx, sess)
 	if err != nil {
 		s.lo.Error("my-tickets: creating session", "error", err)
-		return s.renderError(r, fasthttp.StatusInternalServerError, "Something went wrong. Please try again.")
+		return s.signInFailed(r, signInError)
 	}
 	s.lo.Info("my-tickets: sign-in", "iss", claims.Issuer, "instance", sess.Instance, "user", string(claims.ExternalUserID), "orgs", len(sess.Orgs), "org", sess.OrgID, "scope", sess.Scope, "contact_id", contactID)
 
@@ -207,6 +158,23 @@ func (s *Service) Login(r *fastglue.Request) error {
 	// Redirect to a clean URL so the token leaves the address bar and history.
 	return s.redirect(r, basePath)
 }
+
+// Why a sign-in failed, for the app to explain (?signin=<reason> on /my-tickets). The
+// codes are fixed: the app maps each to its message and ignores anything else.
+const (
+	signInMissing = "missing" // no token in the link
+	signInInvalid = "invalid" // bad signature, expired, unknown issuer, no access
+	signInUsed    = "used"    // the token was already exchanged
+	signInError   = "error"   // the helpdesk couldn't record the sign-in
+)
+
+// signInFailed sends the browser to the app, which explains the failure, or simply
+// opens the customer's tickets if they still have a session from an earlier sign-in.
+func (s *Service) signInFailed(r *fastglue.Request, reason string) error {
+	return s.redirect(r, basePath+"?signin="+reason)
+}
+
+// ---- shared by the API handlers ----
 
 // inboxRow is one ticket in the inbox list.
 type inboxRow struct {
@@ -263,67 +231,6 @@ func (s *Service) listTickets(sess Session, f listFilter) ([]inboxRow, bool, err
 	return rows, hasOlder, nil
 }
 
-// loadList reads the list filters from the query string and loads the inbox
-// list. The list page and the ticket page both show it.
-func (s *Service) loadList(r *fastglue.Request, sess Session) (map[string]any, error) {
-	f := listFilterOf(r.RequestCtx.QueryArgs(), sess)
-	status, project, projectName, search, page := f.Status, f.Project, f.ProjectName, f.Search, f.Page
-	rows, hasOlder, err := s.listTickets(sess, f)
-	if err != nil {
-		return nil, err
-	}
-	// Ticket links carry the filters and page so the list stays the same while reading.
-	query := func(page int) template.URL {
-		keep := url.Values{}
-		for k, v := range map[string]string{"status": status, "project": project, "q": search} {
-			if v != "" {
-				keep.Set(k, v)
-			}
-		}
-		if page > 1 {
-			keep.Set("page", strconv.Itoa(page))
-		}
-		if len(keep) == 0 {
-			return ""
-		}
-		return template.URL("?" + keep.Encode()) // #nosec G203: built by url.Values.Encode
-	}
-	return map[string]any{
-		"S": sess, "Tickets": rows, "Status": status, "Project": project, "ProjectName": projectName,
-		"Search": search, "Filters": query(page),
-		"Page": page, "HasNewer": page > 1, "HasOlder": hasOlder,
-		"NewerURL": template.URL("/my-tickets") + query(page-1), "OlderURL": template.URL("/my-tickets") + query(page+1),
-		"ShowRaisedBy": true, "ShowProject": len(sess.Projects) > 0,
-	}, nil
-}
-
-// List shows the tickets in the session's scope.
-func (s *Service) List(r *fastglue.Request) error {
-	sess, ok := s.session(r)
-	if !ok {
-		return s.sessionEnded(r)
-	}
-	data, err := s.loadList(r, sess)
-	if err != nil {
-		s.lo.Error("my-tickets: listing", "error", err)
-		return s.renderError(r, fasthttp.StatusInternalServerError, "We couldn't load your tickets. Please try again.")
-	}
-	return s.render(r, fasthttp.StatusOK, "list.html", data)
-}
-
-// View shows one ticket's thread next to the inbox list.
-func (s *Service) View(r *fastglue.Request) error {
-	sess, ok := s.session(r)
-	if !ok {
-		return s.sessionEnded(r)
-	}
-	t, ok := s.visibleTicket(r, &sess)
-	if !ok {
-		return s.renderError(r, fasthttp.StatusNotFound, "We couldn't find that ticket.")
-	}
-	return s.renderTicket(r, sess, t, "", "")
-}
-
 // threadPage loads page mpage of a ticket's thread (1, the default, is the newest
 // messages; a page past the oldest shows the oldest). It returns the messages, how many
 // there are in all, and the page shown.
@@ -335,107 +242,6 @@ func (s *Service) threadPage(t TicketSummary, mpage int) ([]Message, int, int, e
 		msgs, total, err = s.backend.Messages(t.UUID, mpage, messagesPerPage)
 	}
 	return msgs, total, mpage, err
-}
-
-// renderTicket shows a ticket's thread, with an optional problem and the
-// reply draft to keep after a rejected reply.
-func (s *Service) renderTicket(r *fastglue.Request, sess Session, t TicketSummary, problem, draft string) error {
-	msgs, total, mpage, err := s.threadPage(t, r.RequestCtx.QueryArgs().GetUintOrZero("m"))
-	if err != nil {
-		s.lo.Error("my-tickets: loading messages", "error", err)
-		return s.renderError(r, fasthttp.StatusInternalServerError, "We couldn't load this ticket. Please try again.")
-	}
-	data, err := s.loadList(r, sess)
-	if err != nil {
-		s.lo.Error("my-tickets: listing", "error", err)
-		return s.renderError(r, fasthttp.StatusInternalServerError, "We couldn't load this ticket. Please try again.")
-	}
-	type viewMsg struct {
-		Message
-		Body template.HTML
-	}
-	view := make([]viewMsg, 0, len(msgs))
-	for _, m := range msgs {
-		view = append(view, viewMsg{m, template.HTML(s.sanitize.Sanitize(m.HTML))}) // #nosec G203: sanitised above
-	}
-	t = withCurrentNames(sess, t)
-	data["T"] = t
-	data["TicketStatus"] = CustomerStatus(t.InternalStatus)
-	data["Messages"] = view
-	// Thread paging links keep the list's filters and page.
-	threadURL := func(page int) template.URL {
-		u := basePath + "/" + url.PathEscape(t.ReferenceNumber) + string(data["Filters"].(template.URL))
-		if page > 1 {
-			sep := "?"
-			if strings.Contains(u, "?") {
-				sep = "&"
-			}
-			u += sep + "m=" + strconv.Itoa(page)
-		}
-		return template.URL(u) // #nosec G203: path-escaped ref and url.Values-encoded filters
-	}
-	newest := total - (mpage-1)*messagesPerPage // messages counted oldest = 1
-	data["Thread"] = map[string]any{
-		"Paged": total > messagesPerPage, "Total": total,
-		"From": max(1, newest-messagesPerPage+1), "To": newest,
-		"HasEarlier": mpage*messagesPerPage < total, "EarlierURL": threadURL(mpage + 1),
-		"HasNewer": mpage > 1, "NewerURL": threadURL(mpage - 1),
-	}
-	data["Sent"] = problem == "" && string(r.RequestCtx.QueryArgs().Peek("sent")) == "1"
-	data["Problem"] = problem
-	data["Draft"] = draft
-	data["Uploads"] = s.uploadInfo()
-	data["CanReply"] = sess.CanManageTicket(t)
-	return s.render(r, fasthttp.StatusOK, "ticket.html", data)
-}
-
-// NewForm shows the new-ticket form.
-func (s *Service) NewForm(r *fastglue.Request) error {
-	sess, ok := s.session(r)
-	if !ok {
-		return s.sessionEnded(r)
-	}
-	if !sess.CanCreate() {
-		return s.renderReadOnly(r)
-	}
-	// Default to the only project when org-level tickets aren't an option.
-	project := ""
-	if mp := sess.ManageProjects(); !sess.CanManageOrg() && len(mp) == 1 {
-		project = string(mp[0].ID)
-	}
-	return s.renderNewForm(r, sess, "", "", project, "Normal", "")
-}
-
-// renderReadOnly explains that the customer can view but not raise tickets here.
-func (s *Service) renderReadOnly(r *fastglue.Request) error {
-	return s.render(r, fasthttp.StatusForbidden, "message.html", map[string]any{
-		"Title": "You have read-only access",
-		"Text":  "You can view this organisation's support tickets, but not raise new ones. Ask your organisation admin for Manage access to Org Tickets or Project Tickets.",
-	})
-}
-
-// Create handles the new-ticket form.
-func (s *Service) Create(r *fastglue.Request) error {
-	sess, ok := s.session(r)
-	if !ok {
-		return s.sessionEnded(r)
-	}
-	if !CSRFValid(sess, string(r.RequestCtx.FormValue("csrf"))) {
-		return s.renderError(r, fasthttp.StatusForbidden, "Your form expired. Please go back and try again.")
-	}
-	n := newTicketOf(r)
-	if !sess.CanCreate() {
-		return s.renderReadOnly(r)
-	}
-	files, problem := s.checkNewTicket(r, sess, n)
-	if problem != "" {
-		return s.renderNewForm(r, sess, n.Subject, n.Body, n.Project, n.Priority, problem)
-	}
-	ref, err := s.createTicket(sess, n, files)
-	if err != nil {
-		return s.renderNewForm(r, sess, n.Subject, n.Body, n.Project, n.Priority, "We couldn't create your ticket. Please try again.")
-	}
-	return s.redirect(r, basePath+"/"+ref)
 }
 
 // newTicket is the new-ticket form's fields.
@@ -503,40 +309,6 @@ func (s *Service) createTicket(sess Session, n newTicket, files []Upload) (strin
 	return ref, nil
 }
 
-// Reply adds a customer reply to a ticket.
-func (s *Service) Reply(r *fastglue.Request) error {
-	sess, ok := s.session(r)
-	if !ok {
-		return s.sessionEnded(r)
-	}
-	if !CSRFValid(sess, string(r.RequestCtx.FormValue("csrf"))) {
-		return s.renderError(r, fasthttp.StatusForbidden, "Your form expired. Please go back and try again.")
-	}
-	t, ok := s.visibleTicket(r, &sess)
-	if !ok {
-		return s.renderError(r, fasthttp.StatusNotFound, "We couldn't find that ticket.")
-	}
-	if !sess.CanManageTicket(t) {
-		return s.renderTicket(r, sess, t, "You have read-only access to this ticket, so you can't reply.", "")
-	}
-	body := strings.TrimSpace(string(r.RequestCtx.FormValue("message")))
-	files, problem := s.checkReply(r, body)
-	if problem != "" {
-		return s.renderTicket(r, sess, t, problem, body)
-	}
-	if err := s.addReply(sess, t, body, files); err != nil {
-		return s.renderTicket(r, sess, t, "We couldn't send your reply. Please try again.", body)
-	}
-	// Back to the ticket, keeping the inbox filters the form carried.
-	back := url.Values{"sent": {"1"}}
-	for _, k := range []string{"status", "project", "q"} {
-		if v := string(r.RequestCtx.QueryArgs().Peek(k)); v != "" {
-			back.Set(k, v)
-		}
-	}
-	return s.redirect(r, basePath+"/"+t.ReferenceNumber+"?"+back.Encode())
-}
-
 // checkReply checks a reply and reads its attachments. It returns the files, or a
 // problem to show the customer.
 func (s *Service) checkReply(r *fastglue.Request, body string) ([]Upload, string) {
@@ -567,26 +339,7 @@ func (s *Service) addReply(sess Session, t TicketSummary, body string, files []U
 	return nil
 }
 
-// Asset serves an embedded stylesheet or logo. URLs carry ?v=<hash>, so they
-// can be cached long-term.
-func (s *Service) Asset(r *fastglue.Request) error {
-	name, _ := r.RequestCtx.UserValue("file").(string)
-	ctype, ok := assetTypes[name]
-	if !ok {
-		r.RequestCtx.SetStatusCode(fasthttp.StatusNotFound)
-		return nil
-	}
-	b, err := staticFS.ReadFile("static/" + name)
-	if err != nil {
-		r.RequestCtx.SetStatusCode(fasthttp.StatusNotFound)
-		return nil
-	}
-	r.RequestCtx.Response.Header.Set("Cache-Control", "public, max-age=31536000, immutable")
-	r.RequestCtx.Response.Header.Set("X-Content-Type-Options", "nosniff")
-	r.RequestCtx.SetContentType(ctype)
-	r.RequestCtx.SetBody(b)
-	return nil
-}
+// ---- helpers ----
 
 // themeOf returns the visitor's saved theme: "light", "dark", or "" (follow the device).
 func themeOf(r *fastglue.Request) string {
@@ -596,88 +349,6 @@ func themeOf(r *fastglue.Request) string {
 	}
 	return ""
 }
-
-// safeBack keeps a return path inside My Tickets.
-func safeBack(path string) string {
-	if path == basePath || (strings.HasPrefix(path, basePath+"/") || strings.HasPrefix(path, basePath+"?")) &&
-		!strings.ContainsAny(path, "\\\r\n") {
-		return path
-	}
-	return basePath
-}
-
-// Theme saves the light/dark choice ("light", "dark", "system", or "toggle" from the
-// toggle's form) and returns to the page it came from. theme.js does this without a reload.
-func (s *Service) Theme(r *fastglue.Request) error {
-	back := safeBack(string(r.RequestCtx.FormValue("back")))
-	sess, ok := s.session(r)
-	if !ok || !CSRFValid(sess, string(r.RequestCtx.FormValue("csrf"))) {
-		return s.redirect(r, back)
-	}
-	c := fasthttp.AcquireCookie()
-	defer fasthttp.ReleaseCookie(c)
-	c.SetKey(themeCookie)
-	c.SetPath(basePath)
-	c.SetSecure(true)
-	c.SetSameSite(fasthttp.CookieSameSiteLaxMode)
-	theme := string(r.RequestCtx.FormValue("theme"))
-	if theme == "toggle" {
-		// Without theme.js the server can't see the device's setting: flip between
-		// following the device (assumed light) and dark.
-		if themeOf(r) == "" {
-			theme = "dark"
-		} else {
-			theme = "system"
-		}
-	}
-	switch theme {
-	case "light", "dark":
-		c.SetValue(theme)
-		c.SetMaxAge(365 * 24 * 60 * 60)
-	default: // "system": follow the device again
-		c.SetExpire(fasthttp.CookieExpireDelete)
-	}
-	r.RequestCtx.Response.Header.SetCookie(c)
-	return s.redirect(r, back)
-}
-
-// SwitchOrg makes another of the session's orgs current.
-func (s *Service) SwitchOrg(r *fastglue.Request) error {
-	sid := string(r.RequestCtx.Request.Header.Cookie(cookieName))
-	sess, ok := s.session(r)
-	if !ok {
-		return s.sessionEnded(r)
-	}
-	if !CSRFValid(sess, string(r.RequestCtx.FormValue("csrf"))) {
-		return s.renderError(r, fasthttp.StatusForbidden, "Your form expired. Please go back and try again.")
-	}
-	if !sess.UseOrg(string(r.RequestCtx.FormValue("org"))) {
-		return s.renderError(r, fasthttp.StatusNotFound, "We couldn't find that organisation.")
-	}
-	ctx, cancel := redisCtx()
-	defer cancel()
-	if err := s.store.Update(ctx, sid, sess); err != nil {
-		s.lo.Error("my-tickets: switching org", "error", err)
-		return s.renderError(r, fasthttp.StatusInternalServerError, "Something went wrong. Please try again.")
-	}
-	return s.redirect(r, basePath)
-}
-
-// Logout ends the session.
-func (s *Service) Logout(r *fastglue.Request) error {
-	sid := string(r.RequestCtx.Request.Header.Cookie(cookieName))
-	ctx, cancel := redisCtx()
-	defer cancel()
-	if sess, err := s.store.Get(ctx, sid); err == nil && CSRFValid(sess, string(r.RequestCtx.FormValue("csrf"))) {
-		_ = s.store.Delete(ctx, sid)
-	}
-	r.RequestCtx.Response.Header.DelClientCookie(cookieName)
-	return s.render(r, fasthttp.StatusOK, "message.html", map[string]any{
-		"Title": "Signed out", "Text": "You've signed out of Encatch Support. Open Support from your Encatch app to sign in again.",
-	})
-}
-
-// ---- helpers ----
 
 // redisCtx bounds each Redis call; the request object isn't used as a context.
 func redisCtx() (context.Context, context.CancelFunc) {
@@ -697,10 +368,6 @@ func (s *Service) session(r *fastglue.Request) (Session, bool) {
 	return sess, true
 }
 
-// visibleTicket loads the ticket in the URL if the session may see it. A ticket in
-// another of the session's orgs (a link opened while a different org was selected)
-// switches the session to that org, if the user's access there shows it. Anything
-// else is "not found", whether or not the ticket exists.
 // withCurrentNames shows the project's current name from the sign-in, rather than the
 // name stored on the ticket when it was raised (SyncNames catches the stored one up).
 func withCurrentNames(sess Session, t TicketSummary) TicketSummary {
@@ -710,6 +377,10 @@ func withCurrentNames(sess Session, t TicketSummary) TicketSummary {
 	return t
 }
 
+// visibleTicket loads the ticket in the URL if the session may see it. A ticket in
+// another of the session's orgs (a link opened while a different org was selected)
+// switches the session to that org, if the user's access there shows it. Anything
+// else is "not found", whether or not the ticket exists.
 func (s *Service) visibleTicket(r *fastglue.Request, sess *Session) (TicketSummary, bool) {
 	ref, _ := r.RequestCtx.UserValue("ref").(string)
 	if ref == "" || len(ref) > 64 {
@@ -734,15 +405,6 @@ func (s *Service) visibleTicket(r *fastglue.Request, sess *Session) (TicketSumma
 	}
 	*sess = switched
 	return t, true
-}
-
-func (s *Service) renderNewForm(r *fastglue.Request, sess Session, subject, body, project, priority, problem string) error {
-	return s.render(r, fasthttp.StatusOK, "new.html", map[string]any{
-		"S": sess, "Subject": subject, "Message": body, "Project": project, "Priority": priority, "Problem": problem,
-		"Projects": sess.ManageProjects(), "AllowOrgLevel": sess.CanManageOrg(),
-		"CanChoosePriority": PriorityEligible(s.orgTier(sess), s.eligibleTiers), "Priorities": PriorityChoices,
-		"Uploads": s.uploadInfo(),
-	})
 }
 
 // orgTier returns the org's current support tier, falling back to the tier at sign-in.
@@ -848,40 +510,6 @@ func (s *Service) readUploads(r *fastglue.Request) ([]Upload, string) {
 	return files, ""
 }
 
-func (s *Service) sessionEnded(r *fastglue.Request) error {
-	return s.render(r, fasthttp.StatusUnauthorized, "message.html", map[string]any{
-		"Title": "Your session has ended", "Text": fmt.Sprintf("For your security, sessions last %s. Open Support again from Encatch to continue.", humanDuration(s.sessionTTL)),
-	})
-}
-
-func (s *Service) renderError(r *fastglue.Request, code int, text string) error {
-	return s.render(r, code, "message.html", map[string]any{"Title": "Something's not right", "Text": text})
-}
-
-func (s *Service) render(r *fastglue.Request, code int, name string, data map[string]any) error {
-	if data == nil {
-		data = map[string]any{}
-	}
-	// Every page: the saved theme, and where the theme switch returns to.
-	data["Theme"] = themeOf(r)
-	data["Back"] = basePath
-	if r.RequestCtx.IsGet() {
-		data["Back"] = safeBack(string(r.RequestCtx.RequestURI()))
-	}
-	var buf bytes.Buffer
-	if err := s.tmpl.ExecuteTemplate(&buf, name, data); err != nil {
-		s.lo.Error("my-tickets: rendering", "template", name, "error", err)
-		code = fasthttp.StatusInternalServerError
-		buf.Reset()
-		buf.WriteString("Something went wrong.")
-	}
-	setSecurityHeaders(r.RequestCtx)
-	r.RequestCtx.SetStatusCode(code)
-	r.RequestCtx.SetContentType("text/html; charset=utf-8")
-	r.RequestCtx.SetBody(buf.Bytes())
-	return nil
-}
-
 func (s *Service) redirect(r *fastglue.Request, to string) error {
 	setSecurityHeaders(r.RequestCtx)
 	// A relative Location: fasthttp's Redirect would build an absolute http:// URL
@@ -929,20 +557,6 @@ func sender(sess Session, t TicketSummary) string {
 		return t.LastAuthor
 	default:
 		return t.RaisedBy
-	}
-}
-
-// mailDate formats a list timestamp like a mailbox: the time today, the day
-// this year, else the full date (IST).
-func mailDate(t, now time.Time) string {
-	t, now = t.In(ist), now.In(ist)
-	switch {
-	case t.Year() == now.Year() && t.YearDay() == now.YearDay():
-		return t.Format("15:04")
-	case t.Year() == now.Year():
-		return t.Format("2 Jan")
-	default:
-		return t.Format("2 Jan 2006")
 	}
 }
 

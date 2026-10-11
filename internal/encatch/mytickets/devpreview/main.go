@@ -1,6 +1,8 @@
-// Command devpreview runs the My Tickets pages locally with sample data, for UI
-// review. It needs no database or libredesk server: an in-memory Redis and a fake
-// backend stand in. Not part of the libredesk binary.
+// Command devpreview runs My Tickets locally with sample data, for UI review: the Vue
+// app as last built (web/build/app) and its API. It needs no database or libredesk
+// server: an in-memory Redis and a fake backend stand in. Not part of the libredesk
+// binary. For live UI changes also run the Vite dev server (pnpm dev in web/, then
+// http://localhost:8791), which proxies the API and sign-in to this.
 //
 //	go run ./internal/encatch/mytickets/devpreview      # then open http://localhost:8790
 package main
@@ -69,15 +71,11 @@ func main() {
 		}
 		return previewLogin(r)
 	})
-	g.GET("/my-tickets/assets/{file}", svc.Asset)
 	g.GET("/my-tickets/login", svc.Login)
-	g.POST("/my-tickets/logout", svc.Logout)
-	g.GET("/my-tickets", svc.List)
-	g.GET("/my-tickets/new", svc.NewForm)
-	g.POST("/my-tickets/new", svc.Create)
-	g.POST("/my-tickets/org", svc.SwitchOrg)
-	g.GET("/my-tickets/{ref}", svc.View)
-	g.POST("/my-tickets/{ref}/reply", svc.Reply)
+	g.GET("/my-tickets/assets/{file}", svc.AppAsset)
+	g.GET("/my-tickets", svc.App)
+	g.GET("/my-tickets/new", svc.App)
+	g.GET("/my-tickets/{ref}", svc.App)
 	for _, rt := range mytickets.APIRoutes {
 		h := rt.Handler
 		rt.Register(g, func(r *fastglue.Request) error { return h(svc, r) })
@@ -102,11 +100,21 @@ func index(r *fastglue.Request) error {
 		{"Sam: manages Acme only, no tickets yet (SaaS Standard)", "user=sam&tier=SaaS+Standard"},
 	}
 	var b strings.Builder
-	b.WriteString(`<!doctype html><meta charset=utf-8><title>My Tickets preview</title><link rel=stylesheet href="/static/public/static/fonts.css"><link rel=stylesheet href="/my-tickets/assets/app.css"><body class="min-h-screen"><main class="mx-auto max-w-3xl px-4 pt-8"><div class="card" style="max-width:560px;margin:40px auto"><div class="card-header"><h1 class="card-title text-xl">My Tickets preview</h1><p class="card-description">Local UI preview with sample data. Pick who to sign in as. Each link mints a fresh token with that person's orgs and access, as core-accounts' /support page will. The tier is set for BigCorp, as an admin would on the Customer organisations page.</p></div><div class="card-content" style="display:grid;gap:8px">`)
+	b.WriteString(`<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>My Tickets preview</title>` +
+		`<link rel=stylesheet href="/static/public/static/fonts.css"><style>` +
+		`body{margin:0;font-family:Geist,system-ui,sans-serif;color:#160f30;background:#fff;letter-spacing:-.025em}` +
+		`main{max-width:560px;margin:56px auto;padding:24px;border:1px solid #ede8fb;border-radius:14px}` +
+		`h1{font-size:20px;margin:0 0 6px}p{color:#5d5777;font-size:14px;line-height:1.5;margin:0 0 16px}` +
+		`a{display:block;padding:9px 14px;margin-top:8px;border:1px solid #e2dff7;border-radius:8px;color:inherit;text-decoration:none;font-size:14px}` +
+		`a:hover{background:#eef0ff}</style>` +
+		`<main><h1>My Tickets preview</h1><p>Local UI preview with sample data, served by the Vue app's last build ` +
+		`(pnpm build in internal/encatch/mytickets/web; for live changes use pnpm dev on :8791). Pick who to sign in as. ` +
+		`Each link mints a fresh token with that person's orgs and access, as core-accounts' /support page does. ` +
+		`The tier is set for BigCorp, as an admin would on the Customer organisations page.</p>`)
 	for _, o := range opts {
-		fmt.Fprintf(&b, `<a class="btn btn-outline" style="justify-content:flex-start;white-space:normal;height:auto;padding:8px 14px;text-align:left" href="/preview-login?%s">%s</a>`, o.query, o.label)
+		fmt.Fprintf(&b, `<a href="/preview-login?%s">%s</a>`, o.query, o.label)
 	}
-	b.WriteString(`</div></div></main></body>`)
+	b.WriteString(`</main>`)
 	r.RequestCtx.SetContentType("text/html; charset=utf-8")
 	r.RequestCtx.SetBodyString(b.String())
 	return nil

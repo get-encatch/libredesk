@@ -1,0 +1,2 @@
+# The production build (see build/README.md); Go embeds it, the repo doesn't keep it.
+/build/app/

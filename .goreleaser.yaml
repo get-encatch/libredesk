@@ -8,6 +8,11 @@ before:
   hooks:
     - go mod tidy
     - make frontend-build
+    # encatch: build the My Tickets app (its own pnpm project), which the binary embeds
+    # (internal/encatch/mytickets/spa.go); refuse to release without it.
+    - npx -y pnpm@11.15.1 --dir internal/encatch/mytickets/web install --frozen-lockfile
+    - npx -y pnpm@11.15.1 --dir internal/encatch/mytickets/web build
+    - test -f internal/encatch/mytickets/web/build/app/index.html
 
 builds:
   - id: "universal"
