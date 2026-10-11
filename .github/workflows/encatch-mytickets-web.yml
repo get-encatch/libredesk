@@ -1,0 +1,47 @@
+# encatch: tests and builds the My Tickets Vue app (internal/encatch/mytickets/web), an
+# independent build with its own package.json and lockfile.
+name: My Tickets web
+
+on:
+  pull_request:
+    branches: [encatch/main]
+    paths:
+      - "internal/encatch/mytickets/web/**"
+      - "internal/encatch/mytickets/ui/app.css"
+      - "internal/encatch/mytickets/static/**"
+      - ".github/workflows/encatch-mytickets-web.yml"
+  push:
+    branches: [encatch/main]
+    paths:
+      - "internal/encatch/mytickets/web/**"
+      - "internal/encatch/mytickets/ui/app.css"
+      - "internal/encatch/mytickets/static/**"
+      - ".github/workflows/encatch-mytickets-web.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: internal/encatch/mytickets/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install pnpm
+        run: npm install -g pnpm@11.15.1
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build

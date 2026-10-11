@@ -1,0 +1,149 @@
+/* encatch: My Tickets styles. Tailwind v4 with shadcn-vue's token layout and Encatch's
+   design tokens (the same values as ui/app.css, which styles the server-rendered pages
+   until the Vue app replaces them). */
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* dark: utilities apply when the visitor chose Dark (data-theme on <html>, from a
+   cookie), or the device is dark and they didn't choose Light. */
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme="light"]), :root:not([data-theme="light"]) *) {
+      @slot;
+    }
+  }
+}
+
+/* Encatch design tokens (light). */
+:root {
+  --background: #ffffff; --foreground: #160f30;
+  --card: #ffffff; --card-foreground: #160f30;
+  --popover: #ffffff; --popover-foreground: #160f30;
+  --primary: #394dfe; --primary-foreground: #ffffff;
+  --secondary: oklch(0.9280 0.0330 278.0000); --secondary-foreground: oklch(0.3320 0.0900 274.0000);
+  --muted: oklch(0.9702 0 0); --muted-foreground: #5d5777;
+  --accent: oklch(0.9393 0.0288 266.3680); --accent-foreground: oklch(0.5445 0.1903 259.4848);
+  --destructive: oklch(0.6290 0.1902 23.0704); --destructive-foreground: oklch(1.0000 0 0);
+  --border: #ede8fb; --input: #e2dff7; --ring: #394dfe;
+  --badge-primary-bg: #e8ecff; --badge-primary-text: #2d3db8; --badge-primary-border: #b4bcff;
+  --badge-accent-bg: #ede9ff; --badge-accent-text: #5b4cc7; --badge-accent-border: #c4bfef;
+  --badge-neutral-bg: #f0eef9; --badge-neutral-text: #5d5777; --badge-neutral-border: #d4cef0;
+  --warning: oklch(94.5% 0.129 101.54 / 0.2); --warning-foreground: oklch(68.1% 0.162 75.834);
+  --success: oklch(0.65 0.2 150); --success-foreground: oklch(0.3211 0 0);
+  --info: oklch(97.71% 0.0125 236.62); --info-foreground: oklch(59.87% 0.1497 244.76);
+  --sidebar: oklch(0.985 0.004 286); --sidebar-foreground: #160f30;
+  --sidebar-primary: #394dfe; --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: oklch(0.9393 0.0288 266.3680); --sidebar-accent-foreground: oklch(0.5445 0.1903 259.4848);
+  --sidebar-border: #ede8fb; --sidebar-ring: #394dfe;
+  --radius: 0.625rem;
+  --tracking-normal: -0.025em;
+  color-scheme: light;
+}
+
+/* Encatch design tokens (dark): when the visitor chose Dark, or follows a dark device.
+   The two blocks must stay identical (src/theme.test.js checks). */
+:root[data-theme="dark"] {
+  --background: #09090b; --foreground: #f7f5ff;
+  --card: #18181b; --card-foreground: #f7f5ff;
+  --popover: #18181b; --popover-foreground: #f7f5ff;
+  --primary: #394dfe; --primary-foreground: #ffffff;
+  --secondary: #27272a; --secondary-foreground: #f4f4f5;
+  --muted: #27272a; --muted-foreground: #9aa4b8;
+  --accent: #27272a; --accent-foreground: #f4f4f5;
+  --destructive: oklch(0.7106 0.1661 22.2162); --destructive-foreground: oklch(1.0000 0 0);
+  --border: #27272a; --input: #3f3f46; --ring: #394dfe;
+  --badge-primary-bg: #1a2466; --badge-primary-text: #a5b4ff; --badge-primary-border: #2e3da8;
+  --badge-accent-bg: #2a2058; --badge-accent-text: #8b7cff; --badge-accent-border: #3d355e;
+  --badge-neutral-bg: #12102a; --badge-neutral-text: #9aa4b8; --badge-neutral-border: #272d3d;
+  --warning: oklch(94.5% 0.129 101.54 / 0); --warning-foreground: oklch(68.1% 0.162 75.834);
+  --success: oklch(0.7 0.15 155); --success-foreground: oklch(0.9219 0 0);
+  --info: oklch(29.32% 0.0658 242.91); --info-foreground: oklch(73.28% 0.146 229.96);
+  --sidebar: #18181b; --sidebar-foreground: #f7f5ff;
+  --sidebar-primary: #394dfe; --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #27272a; --sidebar-accent-foreground: #f4f4f5;
+  --sidebar-border: #27272a; --sidebar-ring: #394dfe;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --background: #09090b; --foreground: #f7f5ff;
+    --card: #18181b; --card-foreground: #f7f5ff;
+    --popover: #18181b; --popover-foreground: #f7f5ff;
+    --primary: #394dfe; --primary-foreground: #ffffff;
+    --secondary: #27272a; --secondary-foreground: #f4f4f5;
+    --muted: #27272a; --muted-foreground: #9aa4b8;
+    --accent: #27272a; --accent-foreground: #f4f4f5;
+    --destructive: oklch(0.7106 0.1661 22.2162); --destructive-foreground: oklch(1.0000 0 0);
+    --border: #27272a; --input: #3f3f46; --ring: #394dfe;
+    --badge-primary-bg: #1a2466; --badge-primary-text: #a5b4ff; --badge-primary-border: #2e3da8;
+    --badge-accent-bg: #2a2058; --badge-accent-text: #8b7cff; --badge-accent-border: #3d355e;
+    --badge-neutral-bg: #12102a; --badge-neutral-text: #9aa4b8; --badge-neutral-border: #272d3d;
+    --warning: oklch(94.5% 0.129 101.54 / 0); --warning-foreground: oklch(68.1% 0.162 75.834);
+    --success: oklch(0.7 0.15 155); --success-foreground: oklch(0.9219 0 0);
+    --info: oklch(29.32% 0.0658 242.91); --info-foreground: oklch(73.28% 0.146 229.96);
+    --sidebar: #18181b; --sidebar-foreground: #f7f5ff;
+    --sidebar-primary: #394dfe; --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #27272a; --sidebar-accent-foreground: #f4f4f5;
+    --sidebar-border: #27272a; --sidebar-ring: #394dfe;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --font-sans: Geist, ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-badge-primary-bg: var(--badge-primary-bg);
+  --color-badge-primary-text: var(--badge-primary-text);
+  --color-badge-primary-border: var(--badge-primary-border);
+  --color-badge-neutral-bg: var(--badge-neutral-bg);
+  --color-badge-neutral-text: var(--badge-neutral-text);
+  --color-badge-neutral-border: var(--badge-neutral-border);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --tracking-tight: calc(var(--tracking-normal) - 0.025em);
+  --tracking-normal: var(--tracking-normal);
+}
+
+@layer base {
+  html { scrollbar-gutter: stable; }
+  * { @apply border-border outline-ring/50; }
+  body { @apply bg-background text-foreground font-sans antialiased; letter-spacing: var(--tracking-normal); }
+}

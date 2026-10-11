@@ -4,8 +4,21 @@
     {
       "name": "my-tickets-preview",
       "runtimeExecutable": "go",
-      "runtimeArgs": ["run", "./internal/encatch/mytickets/devpreview"],
+      "runtimeArgs": [
+        "run",
+        "./internal/encatch/mytickets/devpreview"
+      ],
       "port": 8790
+    },
+    {
+      "name": "my-tickets-web",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--dir",
+        "internal/encatch/mytickets/web",
+        "dev"
+      ],
+      "port": 8791
     }
   ]
 }
