@@ -9,7 +9,15 @@ Docker Compose stack for libredesk on a single server, with automated backups.
 | redis | `redis:7-alpine` | Sessions/cache, not backed up |
 | caddy | `caddy:2-alpine` | HTTPS for both domains, certificates issued and renewed automatically |
 
-Server: `ssh -i helpdesk.pem ubuntu@103.205.140.125`, installed in `/srv/libredesk`.
+Server: installed in `/srv/libredesk`, reached as `ssh encatch-helpdesk`. The address, user and key
+are not kept in this public repo: add them to your `~/.ssh/config` (ask the maintainer for the values):
+
+```
+Host encatch-helpdesk
+  HostName <server address>
+  User <login user>
+  IdentityFile <path to the helpdesk key>
+```
 
 **Two domains** (see `Caddyfile`):
 - `desk.encatch.com` (`DESK_DOMAIN`): agents, the full app. Libredesk's **Root URL** is set to this.
@@ -36,8 +44,8 @@ app, and without the restic password the uploads backups can't be decrypted.
 From a checkout of `encatch/main`:
 
 ```bash
-rsync -az -e "ssh -i helpdesk.pem" --exclude .env --exclude data/ --exclude backups/ --exclude secrets/ deploy/ ubuntu@103.205.140.125:/srv/libredesk/
-ssh -i helpdesk.pem ubuntu@103.205.140.125 'cd /srv/libredesk && ./install.sh --with-caddy'
+rsync -az --exclude .env --exclude data/ --exclude backups/ --exclude secrets/ deploy/ encatch-helpdesk:/srv/libredesk/
+ssh encatch-helpdesk 'cd /srv/libredesk && ./install.sh --with-caddy'
 ```
 
 `install.sh` is idempotent: it creates directories and secrets if missing, builds the
