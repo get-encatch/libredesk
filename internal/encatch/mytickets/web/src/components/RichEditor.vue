@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, ref, shallowRef } from 'vue'
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { Editor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import { Placeholder } from '@tiptap/extensions'
@@ -63,6 +63,14 @@ const editor = shallowRef(new Editor({
 }))
 
 onBeforeUnmount(() => editor.value.destroy())
+
+// The placeholder is drawn as a decoration, which ProseMirror only recomputes on a
+// transaction: dispatch an empty one so a new placeholder (e.g. "Write your reply…"
+// once a resolved ticket reopens) shows straight away.
+watch(() => props.placeholder, () => {
+  const e = editor.value
+  if (!e.isDestroyed) e.view.dispatch(e.state.tr)
+})
 
 const active = (name) => {
   void tick.value

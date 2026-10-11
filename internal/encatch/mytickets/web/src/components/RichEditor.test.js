@@ -71,6 +71,14 @@ describe('RichEditor', () => {
     expect(last()).toEqual({ html: '', text: '' })
   })
 
+  it('shows a new placeholder at once', async () => {
+    await render({ placeholder: 'Reply to reopen this ticket…' })
+    const shown = () => document.querySelector('.tiptap p').getAttribute('data-placeholder')
+    expect(shown()).toBe('Reply to reopen this ticket…')
+    await w.setProps({ placeholder: 'Write your reply…' })
+    expect(shown()).toBe('Write your reply…')
+  })
+
   it('clears through its exposed clear()', async () => {
     await render()
     editor().commands.setContent('<p>Draft</p>', { emitUpdate: true })
