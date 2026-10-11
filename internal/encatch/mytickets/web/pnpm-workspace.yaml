@@ -1,0 +1,4 @@
+# pnpm holds back releases younger than a day; these pins were newer when added.
+minimumReleaseAgeExclude:
+  - '@lucide/vue@1.55.0'
+  - '@vitejs/plugin-vue@6.0.10'
