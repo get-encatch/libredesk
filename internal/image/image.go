@@ -113,6 +113,12 @@ func Downscale(maxDim int, r io.ReadSeeker) (*bytes.Reader, error) {
 	if err != nil {
 		return nil, err
 	}
+	// encatch: decode only the formats an avatar may be. Callers check the file
+	// extension, not the content, and imaging's TIFF decoder can panic on crafted files
+	// (GHSA-q7pp-wcgr-pffx, no fixed release), which would take the server down.
+	if format != "jpeg" && format != "png" && format != "gif" {
+		return nil, fmt.Errorf("unsupported image format %q", format)
+	}
 	if cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width > maxDecodePixels/cfg.Height {
 		return nil, fmt.Errorf("invalid or too-large image dimensions %dx%d", cfg.Width, cfg.Height)
 	}
