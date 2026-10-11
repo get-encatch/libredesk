@@ -174,6 +174,10 @@ func initEncatchMyTickets(g *fastglue.Fastglue) {
 	g.POST("/my-tickets/theme", rateLimit(wrap((*mytickets.Service).Theme), "public"))
 	g.GET("/my-tickets/{ref}", rateLimit(wrap((*mytickets.Service).View), "public"))
 	g.POST("/my-tickets/{ref}/reply", rateLimit(wrap((*mytickets.Service).Reply), "public"))
+	// The JSON API for the Vue customer app.
+	for _, rt := range mytickets.APIRoutes {
+		rt.Register(g, rateLimit(wrap(rt.Handler), "public"))
+	}
 }
 
 func durationOr(s string, def time.Duration) time.Duration {
