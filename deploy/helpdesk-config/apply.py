@@ -6,7 +6,7 @@ whose name starts with RULE_PREFIX are owned by this script; any such rule not
 generated from the config is deleted. Other rules are left alone.
 
 Usage (stdlib only):
-    export LIBREDESK_URL=https://support.encatch.com
+    export LIBREDESK_URL=https://desk.encatch.com   # not the support domain: it blocks the admin API
     export LIBREDESK_API_KEY=... LIBREDESK_API_SECRET=...
     python3 apply.py [--dry-run]
 """
