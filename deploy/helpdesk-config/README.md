@@ -67,7 +67,7 @@ Needs an API key for an admin agent (Admin → Agents → System → Generate AP
 the key out of git, and revoke it in the UI when you're done.
 
 ```bash
-export LIBREDESK_URL=https://support.encatch.com
+export LIBREDESK_URL=https://desk.encatch.com   # not the support domain: it blocks the admin API
 export LIBREDESK_API_KEY=... LIBREDESK_API_SECRET=...
 python3 apply.py --dry-run   # show what would change
 python3 apply.py             # apply
