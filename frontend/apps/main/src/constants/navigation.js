@@ -257,6 +257,12 @@ export const accountNavItems = [
     titleKey: 'globals.terms.profile',
     href: '/account/profile',
     icon: 'CircleUser'
+  },
+  // encatch: change your own password (features/encatch/password).
+  {
+    titleKey: 'Password',
+    href: '/account/password',
+    icon: 'KeyRound'
   }
 ]
 

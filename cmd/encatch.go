@@ -9,4 +9,5 @@ func initEncatch(g *fastglue.Fastglue) {
 	initEncatchMyTickets(g)
 	initEncatchRedact(g)
 	initEncatchOrgs(g)
+	initEncatchPassword(g)
 }

@@ -173,6 +173,13 @@ const routes = [
             name: 'profile',
             component: () => import('@main/views/account/profile/ProfileEditView.vue'),
             meta: { titleKey: 'account.editProfile' }
+          },
+          {
+            // encatch: change your own password (features/encatch/password).
+            path: 'password',
+            name: 'encatch-password',
+            component: () => import('@main/features/encatch/password/ChangePassword.vue'),
+            meta: { titleKey: 'Password' }
           }
         ]
       },
