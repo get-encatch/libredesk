@@ -167,6 +167,14 @@
       "role:Admin"
     ]
   },
+  "_new_ticket_alert_comment": "Every new ticket also notifies these agents (in-app, and by email), from the same first-match rule that sets its SLA. Recipients: 'agent:<Full name>', 'team:<Team>' (each member) or 'role:<Role>', resolved to agents at apply time, so no emails live in this public repo. 'agent:Notification Desk' is the agent for the group mailbox; it isn't in any team, so it never gets tickets assigned. Its email must not be the Support inbox's own address, or each alert would come back as a new ticket. Subject and message are plain text; the email adds a link to the ticket.",
+  "new_ticket_alert": {
+    "recipients": [
+      "agent:Notification Desk"
+    ],
+    "subject": "New support ticket",
+    "message": "A new support ticket was raised. Open it with the link below."
+  },
   "remove_sla_policies": [
     "Free",
     "Team",

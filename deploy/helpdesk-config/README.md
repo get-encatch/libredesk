@@ -36,6 +36,13 @@ All times are **business hours** on the desk's default business hours
 - Each SLA policy warns its `warn_before` time ahead of the deadline (to the assigned agent)
   and alerts on breach (assigned agent + all Admins). `role:<Role>` recipients are resolved
   to agent IDs at apply time. Alerts appear in-app, and by email once notification email is set up.
+- **New-ticket alert** (`new_ticket_alert`): every new-ticket rule also runs a Notify action, so
+  each new ticket alerts these recipients once (in-app and by email). Recipients are
+  `agent:<Full name>`, `team:<Team>` or `role:<Role>`, resolved to IDs at apply time. Notify
+  only reaches agents, so a group mailbox gets an agent of its own (**Notification Desk**: no
+  team, so it's never assigned tickets; no password). Never use the Support inbox's own address:
+  the alert would come back as a new ticket, again and again. Subject and message are plain
+  text; the email adds a link to the ticket.
 
 ## Canned replies
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply config.json (support tiers, SLA policies, SLA automation rules, canned replies) to libredesk.
+"""Apply config.json (support tiers, SLA policies, SLA automation rules, new-ticket alert, canned replies) to libredesk.
 
 Idempotent: objects are matched by name and created or updated. Automation rules
 whose name starts with RULE_PREFIX are owned by this script; any such rule not
@@ -143,6 +143,30 @@ def main():
     if default_team and default_team not in teams and not DRY_RUN:
         sys.exit("default_team %r does not exist in libredesk; create it first" % default_team)
 
+    # New-ticket alert: recipients for the notify action, as "user:<id>" / "team:<id>".
+    def notify_recipients(spec):
+        out, agents = [], None
+        for r in spec:
+            kind, _, name = r.partition(":")
+            if kind == "role":
+                out += ["user:%s" % i for i in recipients([r])]
+            elif kind == "team":
+                if name not in teams and not DRY_RUN:
+                    sys.exit("new_ticket_alert: team %r does not exist in libredesk" % name)
+                out.append("team:%s" % teams.get(name, "<team %s>" % name))
+            elif kind == "agent":
+                if agents is None:
+                    agents = {("%s %s" % (ag["first_name"], ag.get("last_name") or "")).strip(): ag["id"]
+                              for ag in api.call("GET", "/api/v1/agents") or []}
+                if name not in agents and not DRY_RUN:
+                    sys.exit("new_ticket_alert: no agent named %r in libredesk; create it first" % name)
+                out.append("user:%s" % agents.get(name, "<agent %s>" % name))
+            else:
+                sys.exit("new_ticket_alert: unknown recipient %r" % r)
+        return list(dict.fromkeys(out))
+    alert = cfg.get("new_ticket_alert")
+    alert_to = notify_recipients(alert["recipients"]) if alert else []
+
     # 4. Build the desired automation rules.
     def tier_is(t):
         return cond(tier_key, "equals", t, "contact_custom_attribute")
@@ -160,6 +184,9 @@ def main():
             acts.append({"type": "set_priority", "value": [prio[priority]]})
         if tags:
             acts.append({"type": "add_tags", "value": list(tags)})
+        if new_ticket and alert_to:
+            acts.append({"type": "notify", "value": [], "recipients": alert_to,
+                         "subject": alert["subject"], "message": alert["message"]})
         return acts
 
     TICKET = "conversation_custom_attribute"
