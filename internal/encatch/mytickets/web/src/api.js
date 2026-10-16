@@ -63,7 +63,8 @@ export async function request(method, path, { params, json, form } = {}) {
     // A proxy error page, or a body too large for the server.
   }
   if (!res.ok || !payload || payload.error) {
-    const e = payload?.error ?? {
+    // A 429 comes from libredesk's rate limiter, in its own error format, not ours.
+    const e = res.status === 429 ? { code: 'rate_limited', message: rateLimitedMessage(res) } : payload?.error ?? {
       code: res.status === 413 ? 'too_large' : 'server',
       message: res.status === 413 ? 'Those files are too large to send. Please attach fewer or smaller files.' : 'Something went wrong. Please try again.',
     }
@@ -73,6 +74,14 @@ export async function request(method, path, { params, json, form } = {}) {
     throw err
   }
   return payload.data
+}
+
+// rateLimitedMessage explains a 429 (ratelimit.go, or libredesk's per-address limit);
+// Retry-After says when to try again.
+function rateLimitedMessage(res) {
+  const secs = parseInt(res.headers?.get?.('Retry-After') ?? '', 10)
+  const wait = secs > 0 && secs <= 120 ? `${secs} seconds` : 'a minute'
+  return `Too many requests right now. Please wait ${wait} and try again; what you've written is kept.`
 }
 
 export const api = {

@@ -209,6 +209,9 @@ session_ttl = "2h"
 email_instances = ["prod"]                            # emails to the customer
 agent_notification_instances = ["dev", "uat", "prod"] # notifications to agents (in-app, email)
 ai_email_instances = []                               # emails sent by the AI agent
+# API calls per signed-in customer per minute (0 = no limit). Calls without a session use
+# rate_limit.public (per address). The pages and their files aren't rate limited.
+api_requests_per_minute = 120
 max_token_lifetime = "60s"
 clock_leeway = "30s"
 tiers = ["SaaS Standard", "SaaS Growth", "Growth Plus", "Enterprise Standard", "Enterprise Premium"]

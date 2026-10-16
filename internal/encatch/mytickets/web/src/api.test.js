@@ -48,6 +48,29 @@ describe('request', () => {
     await expect(request('POST', '/tickets')).rejects.toMatchObject({ status: 422, code: 'invalid', message: 'Please add a subject.' })
   })
 
+  it('explains a rate limit, whatever the error format', async () => {
+    const fetch = vi.fn(async () => ({
+      ok: false,
+      status: 429,
+      headers: new Headers({ 'Retry-After': '60' }),
+      json: async () => ({ status: 'error', message: 'Rate limit exceeded' }),
+    }))
+    vi.stubGlobal('fetch', fetch)
+    await expect(request('POST', '/tickets/112/replies')).rejects.toMatchObject({
+      status: 429,
+      code: 'rate_limited',
+      message: expect.stringContaining('Please wait 60 seconds and try again'),
+    })
+  })
+
+  it('falls back to a minute without a usable Retry-After', async () => {
+    vi.stubGlobal('fetch', respond(429, { status: 'error', message: 'Rate limit exceeded' }))
+    await expect(request('GET', '/tickets')).rejects.toMatchObject({
+      code: 'rate_limited',
+      message: expect.stringContaining('Please wait a minute and try again'),
+    })
+  })
+
   it('reports an ended session', async () => {
     vi.stubGlobal('fetch', respond(401, { error: { code: 'session_ended', message: 'Gone' } }))
     const ended = vi.fn()
