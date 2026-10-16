@@ -100,6 +100,10 @@ func initEncatchMyTickets(g *fastglue.Fastglue) {
 	priorityTiers := ko.Strings("my_tickets.priority_tiers")
 	customerExts := ko.Strings("my_tickets.allowed_extensions") // empty: libredesk's setting alone
 	maxTotalMB := ko.Int("my_tickets.max_total_upload_mb")      // 0: no total limit
+	apiPerMinute := mytickets.DefaultAPIRequestsPerMinute       // per session; 0: none
+	if ko.Exists("my_tickets.api_requests_per_minute") {
+		apiPerMinute = ko.Int("my_tickets.api_requests_per_minute")
+	}
 
 	// A small pool of our own for the list queries; libredesk doesn't expose its DB handle.
 	var (
@@ -133,9 +137,10 @@ func initEncatchMyTickets(g *fastglue.Fastglue) {
 					EmailGate:        emailGate,
 					NotifyGate:       notifyGate,
 				},
-				EligibleTiers: priorityTiers,
-				SessionTTL:    sessionTTL,
-				Logger:        app.lo,
+				EligibleTiers:        priorityTiers,
+				SessionTTL:           sessionTTL,
+				Logger:               app.lo,
+				APIRequestsPerMinute: apiPerMinute,
 				// Attachments follow libredesk's upload settings (Admin > General), narrowed
 				// to my_tickets.allowed_extensions: customers are less trusted than agents.
 				UploadLimits: func() mytickets.UploadLimits {
@@ -164,15 +169,48 @@ func initEncatchMyTickets(g *fastglue.Fastglue) {
 	}
 
 	// Sign-in (a token from Encatch), then the Vue app (internal/encatch/mytickets/web),
-	// whose pages all load the same index.html, and its JSON API.
-	g.GET("/my-tickets/login", rateLimit(wrap((*mytickets.Service).Login), "auth"))
-	g.POST("/my-tickets/login", rateLimit(wrap((*mytickets.Service).Login), "auth"))
+	// whose pages all load the same index.html, and its JSON API. Only sign-in and the
+	// API are rate limited: the page and its files are served from memory, and limiting
+	// them let a client re-fetching a page URL (a link preview stuck in a loop, 2026-10-16)
+	// use up the per-address API budget and block replies from everyone on that network.
+	// The API: per session when signed in (mytickets/ratelimit.go), else per address.
+	limitedAPI := func(h func(*mytickets.Service, *fastglue.Request) error) func(*mytickets.Service, *fastglue.Request) error {
+		return func(s *mytickets.Service, r *fastglue.Request) error {
+			signedIn, allowed := s.LimitAPI(r)
+			if !allowed {
+				return nil
+			}
+			if !signedIn {
+				if err := r.Context.(*App).rateLimit.Check(r.RequestCtx, "public"); err != nil {
+					s.AddressLimited(r, "public")
+					s.RateLimited(r, 60) // our error format, not libredesk's
+					return nil
+				}
+			}
+			return h(s, r)
+		}
+	}
+	// Sign-in keeps libredesk's per-address "auth" limit and its response; only logged here.
+	limitedLogin := func(r *fastglue.Request) error {
+		s := get(r.Context.(*App))
+		if s == nil {
+			r.RequestCtx.SetStatusCode(fasthttp.StatusServiceUnavailable)
+			return nil
+		}
+		if err := r.Context.(*App).rateLimit.Check(r.RequestCtx, "auth"); err != nil {
+			s.AddressLimited(r, "auth")
+			return nil
+		}
+		return s.Login(r)
+	}
+	g.GET("/my-tickets/login", limitedLogin)
+	g.POST("/my-tickets/login", limitedLogin)
 	g.GET("/my-tickets/assets/{file}", wrap((*mytickets.Service).AppAsset))
-	g.GET("/my-tickets", rateLimit(wrap((*mytickets.Service).App), "public"))
-	g.GET("/my-tickets/new", rateLimit(wrap((*mytickets.Service).App), "public"))
-	g.GET("/my-tickets/{ref}", rateLimit(wrap((*mytickets.Service).App), "public"))
+	g.GET("/my-tickets", wrap((*mytickets.Service).App))
+	g.GET("/my-tickets/new", wrap((*mytickets.Service).App))
+	g.GET("/my-tickets/{ref}", wrap((*mytickets.Service).App))
 	for _, rt := range mytickets.APIRoutes {
-		rt.Register(g, rateLimit(wrap(rt.Handler), "public"))
+		rt.Register(g, wrap(limitedAPI(rt.Handler)))
 	}
 }
 

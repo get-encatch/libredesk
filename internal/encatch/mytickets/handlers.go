@@ -49,6 +49,8 @@ type Service struct {
 	sanitize      *bluemonday.Policy
 	uploadLimits  func() UploadLimits
 	app           fs.FS // the built Vue app; nil when it isn't built
+	apiPerMinute  int   // API calls per session per minute; 0 = no per-session limit
+	limitLog      onceAMinute
 }
 
 // Opts configures a Service.
@@ -63,6 +65,8 @@ type Opts struct {
 	UploadLimits func() UploadLimits
 	// App holds the built Vue app (index.html and assets/); nil means the embedded build.
 	App fs.FS
+	// APIRequestsPerMinute limits each session's API calls (ratelimit.go); 0 = no limit.
+	APIRequestsPerMinute int
 }
 
 func New(o Opts) (*Service, error) {
@@ -76,7 +80,7 @@ func New(o Opts) (*Service, error) {
 	return &Service{
 		verifier: o.Verifier, store: o.Store, backend: o.Backend, eligibleTiers: o.EligibleTiers,
 		sessionTTL: o.SessionTTL, lo: o.Logger, sanitize: bluemonday.UGCPolicy(),
-		uploadLimits: o.UploadLimits, app: app,
+		uploadLimits: o.UploadLimits, app: app, apiPerMinute: o.APIRequestsPerMinute,
 	}, nil
 }
 
@@ -359,6 +363,9 @@ func redisCtx() (context.Context, context.CancelFunc) {
 }
 
 func (s *Service) session(r *fastglue.Request) (Session, bool) {
+	if sess, ok := r.RequestCtx.UserValue(sessionCtxKey).(Session); ok { // loaded by LimitAPI
+		return sess, true
+	}
 	ctx, cancel := redisCtx()
 	defer cancel()
 	sess, err := s.store.Get(ctx, string(r.RequestCtx.Request.Header.Cookie(cookieName)))
