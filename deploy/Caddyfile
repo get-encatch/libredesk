@@ -26,8 +26,11 @@
 		file_server
 	}
 
+	# The container name, not the compose service name `app`: other compose projects on the
+	# libredesk network (extra sites) can have an `app` service too, and Docker then resolves
+	# `app` to both (2026-10-17: Listmonk answered for the helpdesk).
 	handle {
-		reverse_proxy app:9000
+		reverse_proxy libredesk_app:9000
 	}
 }
 
@@ -47,7 +50,7 @@
  /uploads/* /static/public/* /assets/* /images/* \
  /health
 	handle @customer {
-		reverse_proxy app:9000
+		reverse_proxy libredesk_app:9000
 	}
 
 	# Agent password links sent before the domain split pointed at this domain; send them
