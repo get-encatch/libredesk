@@ -169,7 +169,7 @@ docker run --rm -v $PWD/backups/restic:/repo -v $PWD/secrets/restic-password:/pw
 ## My Tickets (customer pages)
 
 `support.encatch.com/my-tickets`: customers arrive from Encatch (core-accounts, Preferences >
-Tickets) with a signed token (HS256 JWT, 60 s, one use) and get an 8-hour session to list,
+Tickets) with a signed token (HS256 JWT, 60 s, one use) and get a session (`session_ttl`, 2 hours) to list,
 view, raise and reply to tickets. Config: `[my_tickets]` in `config.toml`.
 
 Every Encatch instance (local, dev, uat, prod) signs with its own issuer,
@@ -186,6 +186,32 @@ LIBREDESK_MY_TICKETS__ISSUERS__ENCATCH_ACCOUNTS_UAT=...
 
 (list a previous secret during rotation). After editing it: `docker compose up -d app`.
 `my-tickets/make-link.py --instance <instance>` is a reference token generator for testing.
+
+Rate limits: the pages and their files aren't limited; API calls are limited per signed-in
+session (`my_tickets.api_requests_per_minute`, default 120) and, without a session, per address
+(`rate_limit.public`). Each limit trip logs `my-tickets: rate limited` once a minute (app log).
+
+## Debugging: request logs for a few seconds
+
+Caddy keeps no access logs. To see which requests arrive (paths, status, user agent; Caddy
+redacts cookies), switch them on through Caddy's admin API for a short window and off again.
+The container's `wget` can't send DELETE, so call the API from the host inside Caddy's network
+namespace:
+
+```bash
+ssh encatch-helpdesk
+cd /srv/libredesk
+pid=$(sudo docker inspect -f '{{.State.Pid}}' $(sudo docker compose ps -q caddy))
+api() { sudo nsenter -t $pid -n curl -s "$@"; }
+api -X POST -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:2019/config/apps/http/servers/srv0/logs
+sleep 30
+api -X DELETE http://127.0.0.1:2019/config/apps/http/servers/srv0/logs
+api http://127.0.0.1:2019/config/apps/http/servers/srv0/logs   # must print null
+sudo docker logs --since 2m $(sudo docker compose ps -q caddy) 2>&1 | grep http.log.access
+```
+
+The lines stay in Caddy's container log until it's recreated, so keep the window short. This
+is a runtime change only; the Caddyfile is untouched and a restart drops it.
 
 ## Adding object storage later
 
