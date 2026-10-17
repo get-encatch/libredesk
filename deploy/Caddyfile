@@ -71,3 +71,8 @@
 		}
 	}
 }
+
+# Other sites hosted on this server (not libredesk), one file each in data/caddy/sites/ on the
+# server (mounted at /etc/caddy/sites, kept across deploys; see deploy/README.md > Extra sites).
+# An empty folder is fine.
+import /etc/caddy/sites/*.caddy

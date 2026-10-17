@@ -13,7 +13,7 @@ WITH_CADDY=0
 PG_UID=70
 
 echo "== directories"
-mkdir -p data/postgres data/uploads data/redis data/caddy/data data/caddy/config \
+mkdir -p data/postgres data/uploads data/redis data/caddy/data data/caddy/config data/caddy/sites \
   backups/pgbackrest backups/dumps backups/restic secrets
 mkdir -p deploy-state/public  # deploy agent state; status.json is served by Caddy
 chmod 700 secrets

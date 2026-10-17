@@ -123,6 +123,7 @@ services:
       - ./deploy-state/public:/srv/deploy-status:ro
       - ./data/caddy/data:/data
       - ./data/caddy/config:/config
+      - ./data/caddy/sites:/etc/caddy/sites:ro   # extra sites (README > Extra sites)
 
 networks:
   libredesk:
