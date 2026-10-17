@@ -38,6 +38,15 @@ repo and a deploy doesn't remove them. An empty folder is fine.
 - The site's container must join the `libredesk_libredesk` network (declare it as an external
   network in its own compose file), so Caddy can reach it by container name. Don't publish its
   port on the host.
+- **Don't name its compose services `app`, `db`, `redis` or `caddy`**, and give its container a
+  `container_name` with its own prefix (`listmonk_app`). On a shared network Docker resolves a
+  service name to every container of that name, across compose projects. On 2026-10-17
+  Listmonk's service was called `app`, so libredesk's traffic (then `reverse_proxy app:9000`)
+  reached Listmonk and the helpdesk was down until the service was renamed. The Caddyfile now
+  uses `libredesk_app`, but libredesk itself still reaches its database and Redis as `db` and
+  `redis`, so those names must stay unique on the network. Check with
+  `docker network inspect libredesk_libredesk` (each container's aliases) and
+  `docker compose exec caddy getent ahosts app`.
 - After adding or changing a file, check and reload (the folder is mounted, so a reload sees
   new files):
   ```bash
@@ -45,7 +54,8 @@ repo and a deploy doesn't remove them. An empty folder is fine.
   docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
   ```
 - Current extra sites: `mail.encatch.com` (Listmonk newsletters, compose project in
-  `/srv/listmonk`, container `listmonk_app:9000`; its database is outside this server).
+  `/srv/listmonk`, service `listmonk`, container `listmonk_app:9000`; its database is outside
+  this server) and `gitbar.dev.encatch.com` (GitBar, `/srv/gitbar`, container `gitbar:3000`).
 
 ```
 /srv/libredesk
