@@ -44,6 +44,27 @@ All times are **business hours** on the desk's default business hours
   the alert would come back as a new ticket, again and again. Subject and message are plain
   text; the email adds a link to the ticket.
 
+## Auto-close (`auto_close`)
+
+Tickets left **Waiting on customer** get an automated reminder after `reminder_after_hours`
+(72) and status **Auto-closing**, then an automated close message after `close_after_hours`
+(120) and status **Resolved**. Two time-trigger rules, `Auto-close: reminder` and
+`Auto-close: close`.
+
+- Hours count from the agent's last reply, in clock hours (weekends included). Automated
+  replies come from the System user and don't restart the clock.
+- Any customer reply (email or My Tickets) sets the ticket to Open, which stops both rules.
+  The next agent reply that sets Waiting on customer starts the countdown again.
+- Time triggers run hourly (so up to an hour late) and only see tickets created in the last
+  30 days (hard-coded in libredesk): older tickets aren't auto-closed.
+- The messages say they're automated and how to keep or reopen the ticket. They're plain
+  HTML with no `{{ }}` placeholders: libredesk fills placeholders only in the emailed copy,
+  so My Tickets and the agent app would show them raw. The email's subject line already
+  carries the ticket's subject and number.
+- The emails follow the same rules as agent replies: customers of non-prod instances aren't
+  emailed (`my_tickets.email_instances`); My Tickets shows the messages either way.
+- My Tickets shows Auto-closing as "Waiting on you" (`internal/encatch/mytickets/model.go`).
+
 ## Canned replies
 
 | Macro | Also sets status |
@@ -81,11 +102,13 @@ were made by hand):
 - Teams "Support" (round robin), "Engineering" and "Billing", with no business hours or
   SLA of their own.
 - Priority `Urgent` (no admin UI: insert a `conversation_priorities` row).
-- Statuses "Waiting on customer" and "Waiting on engineering" (used by the macros).
+
+Statuses (`statuses`: Waiting on customer, Waiting on engineering, Auto-closing) are created
+by the script when missing; existing ones are left alone.
 
 The script is idempotent: objects are matched by name. It **owns every automation rule
-whose name starts with `SLA`**: it creates, updates and deletes those to match the
-config. Name hand-made rules differently. It also sets new-ticket rules to
+whose name starts with `SLA` or `Auto-close`**: it creates, updates and deletes those to
+match the config. Name hand-made rules differently. It also sets new-ticket rules to
 "first match wins".
 
 ## Gotchas

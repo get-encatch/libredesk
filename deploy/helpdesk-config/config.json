@@ -175,6 +175,30 @@
     "subject": "New support ticket",
     "message": "A new support ticket was raised. Open it with the link below."
   },
+  "_statuses_comment": "Ticket statuses the rules and macros use, created when missing (matched by name; existing ones are left alone). Category waiting = waiting on someone else.",
+  "statuses": [
+    {"name": "Waiting on customer", "category": "waiting"},
+    {"name": "Waiting on engineering", "category": "waiting"},
+    {"name": "Auto-closing", "category": "waiting"}
+  ],
+  "_auto_close_comment": "Tickets left Waiting on customer: an automated reminder after reminder_after_hours, then an automated close after close_after_hours, both counted from the agent's last reply in clock hours (weekends included; automated replies don't restart the clock). Any customer reply reopens the ticket (status Open), which stops both. Time-trigger rules run hourly and only see tickets created in the last 30 days (libredesk). My Tickets shows Auto-closing as Waiting on you. Rules named 'Auto-close...' are owned by apply.py.",
+  "auto_close": {
+    "waiting_status": "Waiting on customer",
+    "reminder_status": "Auto-closing",
+    "final_status": "Resolved",
+    "reminder_after_hours": 72,
+    "close_after_hours": 120,
+    "reminder_message": [
+      "<em>This is an automated reminder from Encatch Support.</em>",
+      "We're waiting for your reply on this ticket. If we don't hear from you within 2 days, it will be closed automatically.",
+      "Still need help? Just reply to this email, or open the ticket from Support in your Encatch account, and it will stay open."
+    ],
+    "close_message": [
+      "<em>This is an automated message from Encatch Support.</em>",
+      "This ticket was closed automatically because there's been no reply for 5 days.",
+      "If you still need help, reply to this email, or open the ticket from Support in your Encatch account, and it will reopen."
+    ]
+  },
   "remove_sla_policies": [
     "Free",
     "Team",

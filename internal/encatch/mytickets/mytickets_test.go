@@ -143,7 +143,7 @@ func TestVerifyOrgs(t *testing.T) {
 func TestCustomerStatus(t *testing.T) {
 	cases := map[string]string{
 		"Open": StatusOpen, "Snoozed": StatusOpen, "Waiting on engineering": StatusOpen,
-		"Waiting on customer": StatusWaitingYou, "Resolved": StatusResolved, "Closed": StatusResolved,
+		"Waiting on customer": StatusWaitingYou, "Auto-closing": StatusWaitingYou, "Resolved": StatusResolved, "Closed": StatusResolved,
 	}
 	for in, want := range cases {
 		if got := CustomerStatus(in); got != want {

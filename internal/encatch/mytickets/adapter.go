@@ -247,11 +247,11 @@ func scopeWhere(q ListQuery) (string, []any) {
 	}
 	switch q.Status {
 	case StatusWaitingYou:
-		conds = append(conds, "s.name = 'Waiting on customer'")
+		conds = append(conds, "s.name IN ('Waiting on customer', 'Auto-closing')")
 	case StatusResolved:
 		conds = append(conds, "s.name IN ('Resolved', 'Closed')")
 	case StatusOpen:
-		conds = append(conds, "s.name NOT IN ('Waiting on customer', 'Resolved', 'Closed')")
+		conds = append(conds, "s.name NOT IN ('Waiting on customer', 'Auto-closing', 'Resolved', 'Closed')")
 	}
 	return strings.Join(conds, " AND "), args
 }
