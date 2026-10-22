@@ -157,15 +157,14 @@
       "warn_before": "10m"
     }
   ],
-  "_sla_alerts_comment": "Each policy warns 'warn_before' its deadline, then alerts on breach. Recipients: 'assigned_user', 'role:<Role>' (every agent with that role at apply time) or agent IDs (no emails live in this public repo). Breach alerts go to two named agents, IDs 34 and 35, not role:Admin: on 2026-10-22 the owner decided that agents made Admin later don't get them.",
+  "_sla_alerts_comment": "Each policy warns 'warn_before' its deadline, then alerts on breach. Recipients: 'assigned_user' and/or 'role:<Role>' (resolved to agents with that role at apply time, so no emails live in this public repo).",
   "sla_alerts": {
     "warning_recipients": [
       "assigned_user"
     ],
     "breach_recipients": [
       "assigned_user",
-      "34",
-      "35"
+      "role:Admin"
     ]
   },
   "_new_ticket_alert_comment": "Every new ticket also notifies these agents (in-app, and by email), from the same first-match rule that sets its SLA. Recipients: 'agent:<Full name>', 'team:<Team>' (each member) or 'role:<Role>', resolved to agents at apply time, so no emails live in this public repo. 'agent:Notification Desk' is the agent for the group mailbox; it isn't in any team, so it never gets tickets assigned. Its email must not be the Support inbox's own address, or each alert would come back as a new ticket. Subject and message are plain text; the email adds a link to the ticket.",
