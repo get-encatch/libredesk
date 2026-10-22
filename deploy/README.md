@@ -55,7 +55,7 @@ repo and a deploy doesn't remove them. An empty folder is fine.
   ```
 - Current extra sites: `mail.encatch.com` (Listmonk newsletters, compose project in
   `/srv/listmonk`, service `listmonk`, container `listmonk_app:9000`; its database is outside
-  this server) and `gitbar.dev.encatch.com` (GitBar, `/srv/gitbar`, container `gitbar:3000`).
+  this server).
 
 ```
 /srv/libredesk
