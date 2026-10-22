@@ -68,6 +68,10 @@ history in SQLite (`/srv/gatus/data`), no database server.
   URL, an interval and conditions (`[STATUS] == 200`, `[RESPONSE_TIME] < 5000`,
   `[CERTIFICATE_EXPIRATION] > 336h`); alerts go after 3 failures in a row ("🔴 DOWN") and on
   recovery ("✅ RECOVERED"), through Gatus's `custom` webhook alert (it has no Cliq provider).
+  Each alert is a Cliq message card from "Encatch Monitor": a table (check, URL, alert text,
+  condition results, errors) and buttons to the status page and the checked URL. Gatus inserts
+  values into that JSON as-is (it escapes only double quotes in errors), so **alert
+  descriptions must not contain double quotes**, or the card fails to send.
 - Secrets are set on the server by prompt, never in this repo or a command line:
   `/srv/gatus/set-cliq-key.sh` (the webhook's `zapikey`, into `/srv/gatus/.env`) and
   `/srv/gatus/set-login.sh` (username and password; Caddy stores only a bcrypt hash in
