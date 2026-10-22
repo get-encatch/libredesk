@@ -55,7 +55,31 @@ repo and a deploy doesn't remove them. An empty folder is fine.
   ```
 - Current extra sites: `mail.encatch.com` (Listmonk newsletters, compose project in
   `/srv/listmonk`, service `listmonk`, container `listmonk_app:9000`; its database is outside
-  this server) and `gitbar.dev.encatch.com` (GitBar, `/srv/gitbar`, container `gitbar:3000`).
+  this server) and `internal-status.encatch.com` (Gatus, below).
+
+### Monitoring (Gatus)
+
+`internal-status.encatch.com` is a private status page with alerts to Zoho Cliq (channel
+`argocdalerts`), from [Gatus](https://github.com/TwiN/gatus) pinned to `v5.37.0`
+(`ghcr.io/twin/gatus`). Compose project `/srv/gatus`, service and container `gatus`, 128 MB cap,
+history in SQLite (`/srv/gatus/data`), no database server.
+
+- Checks live in `/srv/gatus/config/config.yaml`; Gatus reloads it on save. Each endpoint has a
+  URL, an interval and conditions (`[STATUS] == 200`, `[RESPONSE_TIME] < 5000`,
+  `[CERTIFICATE_EXPIRATION] > 336h`); alerts go after 3 failures in a row ("🔴 DOWN") and on
+  recovery ("✅ RECOVERED"), through Gatus's `custom` webhook alert (it has no Cliq provider).
+  Each alert is a Cliq message card from "Encatch Monitor": a table (check, URL, alert text,
+  condition results, errors) and buttons to the status page and the checked URL. Gatus inserts
+  values into that JSON as-is (it escapes only double quotes in errors), so **alert
+  descriptions must not contain double quotes**, or the card fails to send.
+- Secrets are set on the server by prompt, never in this repo or a command line:
+  `/srv/gatus/set-cliq-key.sh` (the webhook's `zapikey`, into `/srv/gatus/.env`) and
+  `/srv/gatus/set-login.sh` (username and password; Caddy stores only a bcrypt hash in
+  `data/caddy/sites/internal-status.caddy` and does the login).
+- To test alerts, add a temporary endpoint with a condition that can't pass and
+  `failure-threshold: 1`, then make it pass (recovery alert) and remove it.
+- It runs on this server, so it can't report this server being down; that needs a watcher
+  elsewhere.
 
 ```
 /srv/libredesk
