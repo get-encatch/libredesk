@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Apply config.json (support tiers, SLA policies, SLA automation rules, new-ticket alert, canned replies) to libredesk.
+"""Apply config.json (support tiers, SLA policies, SLA automation rules, new-ticket alert,
+statuses, auto-close, canned replies) to libredesk.
 
 Idempotent: objects are matched by name and created or updated. Automation rules
-whose name starts with RULE_PREFIX are owned by this script; any such rule not
-generated from the config is deleted. Other rules are left alone.
+whose name starts with RULE_PREFIX or AUTO_CLOSE_PREFIX are owned by this script; any
+such rule not generated from the config is deleted. Other rules are left alone.
 
 Usage (stdlib only):
     export LIBREDESK_URL=https://desk.encatch.com   # not the support domain: it blocks the admin API
@@ -17,6 +18,7 @@ import urllib.error
 import urllib.request
 
 RULE_PREFIX = "SLA"
+AUTO_CLOSE_PREFIX = "Auto-close"
 CONFIG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
 DRY_RUN = "--dry-run" in sys.argv
 
@@ -258,15 +260,58 @@ def main():
                                      "%s contact, ticket without its own tier, priority changed: re-apply %s SLA." % (name, t["sla"]),
                                      rule_body(in_tier(t) + [no_ticket_tier], actions(t["sla"]), g1_op="AND")))
 
-    # 5. Sync rules (owned = name starts with RULE_PREFIX).
+    # 4b. Statuses, created when missing (existing ones are left alone).
+    have = {st["name"] for st in api.call("GET", "/api/v1/statuses") or []}
+    for st in cfg.get("statuses", []):
+        if st["name"] not in have:
+            print("status: create %s" % st["name"])
+            api.call("POST", "/api/v1/statuses", {"name": st["name"], "category": st["category"]})
+    status_ids = {st["name"]: str(st["id"]) for st in api.call("GET", "/api/v1/statuses") or []}
+    if DRY_RUN:  # statuses not created yet in a dry run
+        status_ids.update({st["name"]: "<new %s>" % st["name"] for st in cfg.get("statuses", []) if st["name"] not in status_ids})
+
+    # 4c. Auto-close: tickets waiting on the customer get an automated reminder, then an
+    # automated close. Time-trigger rules run hourly; "hours since last reply" counts from
+    # the agent's last reply (automated replies don't reset it) and is rounded, hence "> h-1".
+    time_rules = []
+    ac = cfg.get("auto_close")
+    if ac:
+        def status_is(name):
+            if name not in status_ids:
+                sys.exit("auto_close: status %r does not exist in libredesk; add it to statuses" % name)
+            return cond("status", "equals", status_ids[name])
+
+        def waited(hours):
+            return cond("hours_since_last_reply", "greater than", str(hours - 1))
+
+        def reply(paragraphs):
+            return {"type": "send_reply", "value": ["".join("<p>%s</p>" % p for p in paragraphs)]}
+
+        def set_status(name):
+            return {"type": "set_status", "value": [status_is(name)["value"]]}
+
+        remind_h, close_h = ac["reminder_after_hours"], ac["close_after_hours"]
+        if not 0 < remind_h < close_h:
+            sys.exit("auto_close: need 0 < reminder_after_hours < close_after_hours")
+        time_rules.append(("%s: reminder" % AUTO_CLOSE_PREFIX,
+                           "Ticket %s for %dh since the agent's last reply: automated reminder, status %s." % (ac["waiting_status"], remind_h, ac["reminder_status"]),
+                           rule_body([status_is(ac["waiting_status"]), waited(remind_h)],
+                                     [reply(ac["reminder_message"]), set_status(ac["reminder_status"])], g1_op="AND")))
+        time_rules.append(("%s: close" % AUTO_CLOSE_PREFIX,
+                           "Ticket %s for %dh since the agent's last reply: automated close message, status %s." % (ac["reminder_status"], close_h, ac["final_status"]),
+                           rule_body([status_is(ac["reminder_status"]), waited(close_h)],
+                                     [reply(ac["close_message"]), set_status(ac["final_status"])], g1_op="AND")))
+
+    # 5. Sync rules (owned = name starts with RULE_PREFIX or AUTO_CLOSE_PREFIX).
     current = {}
-    for rtype in ("new_conversation", "conversation_update"):
+    for rtype in ("new_conversation", "conversation_update", "time_trigger"):
         for r in api.call("GET", "/api/v1/automations/rules?type=%s" % rtype) or []:
-            if r["name"].startswith(RULE_PREFIX):
+            if r["name"].startswith((RULE_PREFIX, AUTO_CLOSE_PREFIX)):
                 current[r["name"]] = r
     wanted = {}
     for rtype, events, rules in (("new_conversation", [], new_rules),
-                                 ("conversation_update", ["conversation.priority.change"], update_rules)):
+                                 ("conversation_update", ["conversation.priority.change"], update_rules),
+                                 ("time_trigger", [], time_rules)):
         for weight, (name, desc, body) in enumerate(rules):
             wanted[name] = {"name": name, "description": desc, "type": rtype, "events": events,
                             "enabled": True, "weight": weight, "rules": body}
@@ -293,7 +338,7 @@ def main():
     api.call("PUT", "/api/v1/automations/rules/execution-mode", {"mode": "first_match"})
 
     # 6. Canned replies (macros), matched by name; macros not in the config are left alone.
-    statuses = {st["name"]: str(st["id"]) for st in api.call("GET", "/api/v1/statuses")}
+    statuses = status_ids  # from 4b, with placeholders for statuses a dry run didn't create
     macros = {mc["name"]: mc for mc in api.call("GET", "/api/v1/macros") or []}
     for mc in cfg.get("macros", []):
         acts = [{"type": "set_status", "value": [statuses[mc["set_status"]]]}] if mc.get("set_status") else []
@@ -316,7 +361,7 @@ def main():
             print("sla: delete %s" % name)
             api.call("DELETE", "/api/v1/sla/%d" % existing[name]["id"])
 
-    print("done: %d new-ticket rules, %d priority-change rules" % (len(new_rules), len(update_rules)))
+    print("done: %d new-ticket rules, %d priority-change rules, %d auto-close rules" % (len(new_rules), len(update_rules), len(time_rules)))
 
 
 if __name__ == "__main__":

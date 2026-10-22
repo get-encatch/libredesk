@@ -14,10 +14,12 @@ const (
 )
 
 // CustomerStatus maps an internal libredesk status name to what customers see.
-// Internal states such as "Waiting on engineering" stay hidden as "Open".
+// Internal states such as "Waiting on engineering" stay hidden as "Open". "Auto-closing"
+// is set by the auto-close reminder (deploy/helpdesk-config, auto_close), which asks the
+// customer to reply, so it waits on them too; ListTickets' status filter matches this.
 func CustomerStatus(internal string) string {
 	switch internal {
-	case "Waiting on customer":
+	case "Waiting on customer", "Auto-closing":
 		return StatusWaitingYou
 	case "Resolved", "Closed":
 		return StatusResolved
