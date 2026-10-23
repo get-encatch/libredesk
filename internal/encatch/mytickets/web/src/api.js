@@ -93,4 +93,5 @@ export const api = {
   newTicket: () => request('GET', '/new-ticket'),
   createTicket: (form) => request('POST', '/tickets', { form }),
   reply: (ref, form) => request('POST', `/tickets/${encodeURIComponent(ref)}/replies`, { form }),
+  resolve: (ref, note) => request('POST', `/tickets/${encodeURIComponent(ref)}/resolve`, { json: { note } }),
 }

@@ -71,6 +71,18 @@ describe('request', () => {
     })
   })
 
+  it('resolves a ticket with a JSON note and the CSRF header', async () => {
+    const fetch = respond(200, { data: { resolved: true } })
+    vi.stubGlobal('fetch', fetch)
+    setCsrf('tok')
+    expect(await api.resolve('1/2', 'Works now')).toEqual({ resolved: true })
+    const [url, init] = fetch.mock.calls[0]
+    expect(url).toBe('/my-tickets/api/tickets/1%2F2/resolve')
+    expect(init.method).toBe('POST')
+    expect(init.headers['X-CSRF-Token']).toBe('tok')
+    expect(JSON.parse(init.body)).toEqual({ note: 'Works now' })
+  })
+
   it('reports an ended session', async () => {
     vi.stubGlobal('fetch', respond(401, { error: { code: 'session_ended', message: 'Gone' } }))
     const ended = vi.fn()

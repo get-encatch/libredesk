@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import InboxList from '@/components/InboxList.vue'
 import ReplyBox from '@/components/ReplyBox.vue'
+import ResolveButton from '@/components/ResolveButton.vue'
 import StatusPill from '@/components/StatusPill.vue'
 import TicketDetails from '@/components/TicketDetails.vue'
 import TicketThread from '@/components/TicketThread.vue'
@@ -45,6 +46,12 @@ async function onSent() {
   if (window.innerWidth < 1024) document.querySelector('#message')?.scrollIntoView({ block: 'end', behavior: 'smooth' })
 }
 
+// After the customer resolves the ticket: show its new status here and in the list.
+async function onResolved() {
+  reloadList()
+  await reload()
+}
+
 // A new page of the thread starts at the top of the pane.
 watch(() => [route.params.ref, route.query.m], () => body.value?.scrollTo({ top: 0 }))
 </script>
@@ -63,6 +70,12 @@ watch(() => [route.params.ref, route.query.m], () => body.value?.scrollTo({ top:
           {{ current?.ticket.subject }}
         </h2>
         <StatusPill v-if="current" :status="current.ticket.status" />
+        <ResolveButton
+          v-if="current && current.can_reply && current.ticket.status !== 'Resolved'"
+          :key="current.ticket.ref"
+          :ticket-ref="current.ticket.ref"
+          @resolved="onResolved"
+        />
         <Button
           as-child
           variant="ghost"

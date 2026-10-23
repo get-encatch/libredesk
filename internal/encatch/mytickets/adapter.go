@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -440,6 +441,61 @@ func (b *LibredeskBackend) AddReply(contactID int, convUUID, html string, files 
 		return fmt.Errorf("adding reply: %w", err)
 	}
 	return nil
+}
+
+// ResolveByCustomer marks a ticket Resolved when its customer says it's solved, through
+// libredesk's own actions as the System agent: a private note first (who, and their note),
+// then the status (so SLAs, activity and webhooks behave as for an agent), then libredesk's
+// Notify action to the assigned agent (gated per instance like other agent notifications).
+// The customer's note stays out of the notification: Notify emails are rendered with
+// text/template, unescaped, so it only goes into the (escaped) private note.
+func (b *LibredeskBackend) ResolveByCustomer(convUUID, who, note string) error {
+	system, err := b.Users.GetSystemUser()
+	if err != nil {
+		return fmt.Errorf("loading System agent: %w", err)
+	}
+	conv, err := b.Conversations.GetConversation(0, convUUID, "")
+	if err != nil {
+		return fmt.Errorf("loading ticket: %w", err)
+	}
+	var resolved int
+	if err := b.DB.Get(&resolved, `SELECT id FROM conversation_statuses WHERE name = 'Resolved'`); err != nil {
+		return fmt.Errorf("finding the Resolved status: %w", err)
+	}
+	html := fmt.Sprintf("<p>Marked as resolved by the customer, %s, from My Tickets.</p>", template.HTMLEscapeString(who))
+	if note != "" {
+		html += "<p>Their note:</p><p>" + strings.ReplaceAll(template.HTMLEscapeString(note), "\n", "<br>") + "</p>"
+	}
+	if _, err := b.Conversations.SendPrivateNote(nil, system.ID, convUUID, html, nil); err != nil {
+		return fmt.Errorf("adding the resolved note: %w", err)
+	}
+	if err := b.Conversations.ApplyAction(amodels.RuleAction{Type: amodels.ActionSetStatus, Value: []string{strconv.Itoa(resolved)}}, conv, system); err != nil {
+		return fmt.Errorf("resolving: %w", err)
+	}
+	if conv.AssignedUserID.Valid {
+		notify := amodels.RuleAction{
+			Type:       amodels.ActionNotify,
+			Subject:    fmt.Sprintf("Ticket #%s resolved by the customer", conv.ReferenceNumber),
+			Message:    fmt.Sprintf("%s marked ticket #%s as resolved from My Tickets. See the ticket for any note they left.", plainName(who), conv.ReferenceNumber),
+			Recipients: []string{amodels.NotifyRecipientAssignee},
+		}
+		if err := b.Conversations.ApplyAction(notify, conv, system); err != nil {
+			// The ticket is resolved either way; the note in the thread says so.
+			b.Logger.Error("my tickets: notifying the assignee of a customer resolve", "uuid", convUUID, "error", err)
+		}
+	}
+	return nil
+}
+
+// plainName drops characters that would mean something in HTML, for text that goes
+// unescaped into libredesk's notification email.
+func plainName(s string) string {
+	return strings.Map(func(r rune) rune {
+		if strings.ContainsRune(`<>&"'`, r) {
+			return -1
+		}
+		return r
+	}, s)
 }
 
 // storeUploads saves customer files the way the agent app's media upload does
