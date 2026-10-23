@@ -3,7 +3,9 @@ package mytickets
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/valyala/fasthttp"
 	"github.com/zerodha/fastglue"
@@ -53,6 +55,7 @@ var APIRoutes = []APIRoute{
 	{"POST", basePath + "/api/tickets", (*Service).APICreate},
 	{"GET", basePath + "/api/tickets/{ref}", (*Service).APITicket},
 	{"POST", basePath + "/api/tickets/{ref}/replies", (*Service).APIReply},
+	{"POST", basePath + "/api/tickets/{ref}/resolve", (*Service).APIResolve},
 }
 
 // ---- response shapes ----
@@ -416,6 +419,52 @@ func (s *Service) APIReply(r *fastglue.Request) error {
 		return s.apiFail(r, fasthttp.StatusInternalServerError, errServer, "We couldn't send your reply. Please try again.")
 	}
 	return s.apiOK(r, fasthttp.StatusCreated, map[string]bool{"sent": true})
+}
+
+// maxResolveNote caps the optional note a customer leaves when resolving a ticket.
+const maxResolveNote = 1000
+
+// APIResolve lets a customer with Manage access mark an open ticket Resolved, with an
+// optional note for the team (JSON {"note": "..."}). Replying reopens it, as before.
+func (s *Service) APIResolve(r *fastglue.Request) error {
+	sess, ok := s.apiAuth(r, true)
+	if !ok {
+		return nil
+	}
+	t, ok := s.visibleTicket(r, &sess)
+	if !ok {
+		return s.apiFail(r, fasthttp.StatusNotFound, errNotFound, "We couldn't find that ticket.")
+	}
+	if !sess.CanManageTicket(t) {
+		return s.apiFail(r, fasthttp.StatusForbidden, errReadOnly, "You have read-only access to this ticket, so you can't resolve it.")
+	}
+	if CustomerStatus(t.InternalStatus) == StatusResolved {
+		return s.apiFail(r, fasthttp.StatusConflict, errInvalid, "This ticket is already resolved.")
+	}
+	var body struct {
+		Note string `json:"note"`
+	}
+	if len(r.RequestCtx.PostBody()) > 0 {
+		if err := json.Unmarshal(r.RequestCtx.PostBody(), &body); err != nil {
+			return s.apiFail(r, fasthttp.StatusBadRequest, errInvalid, "We couldn't read that request.")
+		}
+	}
+	note := strings.TrimSpace(body.Note)
+	if utf8.RuneCountInString(note) > maxResolveNote {
+		return s.apiFail(r, fasthttp.StatusUnprocessableEntity, errInvalid, fmt.Sprintf("Please keep the note under %d characters.", maxResolveNote))
+	}
+	who := strings.TrimSpace(sess.Name)
+	if who == "" {
+		who = sess.Email
+	} else if sess.Email != "" {
+		who += " (" + sess.Email + ")"
+	}
+	if err := s.backend.ResolveByCustomer(t.UUID, who, note); err != nil {
+		s.lo.Error("my-tickets: resolving ticket", "ref", t.ReferenceNumber, "error", err)
+		return s.apiFail(r, fasthttp.StatusInternalServerError, errServer, "We couldn't resolve this ticket. Please try again.")
+	}
+	s.lo.Info("my-tickets: ticket resolved by customer", "ref", t.ReferenceNumber, "iss", sess.Issuer, "org", sess.OrgID, "contact_id", sess.ContactID)
+	return s.apiOK(r, fasthttp.StatusOK, map[string]bool{"resolved": true})
 }
 
 // ---- helpers ----

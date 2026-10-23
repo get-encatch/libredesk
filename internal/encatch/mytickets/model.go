@@ -322,4 +322,7 @@ type Backend interface {
 	OrgTier(orgID string) (string, error)
 	// AddReply adds a customer reply to a ticket.
 	AddReply(contactID int, uuid, html string, files []Upload) error
+	// ResolveByCustomer marks a ticket Resolved for its customer: a private note says who
+	// did it (with their note, if any), the status changes, and the assigned agent is told.
+	ResolveByCustomer(uuid, who, note string) error
 }

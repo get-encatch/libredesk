@@ -219,7 +219,10 @@ type fakeBackend struct {
 	files    []Upload
 	tiers    map[string]string // org -> tier set by an admin
 	seenOrgs map[string]string // org -> name, from RegisterOrg
+	resolved []resolveCall     // from ResolveByCustomer
 }
+
+type resolveCall struct{ uuid, who, note string }
 
 func (f *fakeBackend) RegisterOrg(instance, orgID, orgName string) (string, error) {
 	f.seenOrgs[orgID] = orgName
@@ -326,6 +329,17 @@ func (f *fakeBackend) CreateTicket(contactID int, subject, html string, attrs ma
 func (f *fakeBackend) AddReply(contactID int, uuid, html string, files []Upload) error {
 	f.msgs[uuid] = append(f.msgs[uuid], Message{FromCustomer: true, HTML: html})
 	f.files = append(f.files, files...)
+	return nil
+}
+
+func (f *fakeBackend) ResolveByCustomer(uuid, who, note string) error {
+	f.resolved = append(f.resolved, resolveCall{uuid, who, note})
+	for ref, t := range f.tickets {
+		if t.UUID == uuid {
+			t.InternalStatus = "Resolved"
+			f.tickets[ref] = t
+		}
+	}
 	return nil
 }
 

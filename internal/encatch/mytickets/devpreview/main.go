@@ -399,6 +399,19 @@ func (b *sampleBackend) AddReply(contactID int, uuid, html string, files []mytic
 	return nil
 }
 
+// ResolveByCustomer marks the sample ticket Resolved and adds the note an agent would see
+// (private, so it doesn't show in My Tickets).
+func (b *sampleBackend) ResolveByCustomer(uuid, who, note string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for _, t := range b.tickets {
+		if t.UUID == uuid {
+			t.InternalStatus = "Resolved"
+		}
+	}
+	return nil
+}
+
 func repoRoot() string {
 	wd, _ := os.Getwd()
 	for dir := wd; dir != "/"; dir = dir[:strings.LastIndex(dir, "/")] {
