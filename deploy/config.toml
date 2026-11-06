@@ -124,6 +124,10 @@ queue_size = 2000
 [automation]
 # Number of workers processing automation rules
 worker_count = 10
+# Applies to conversation creation dates. Zero or negative values use 90 days.
+# encatch: 30, as before v2.9.0 (it was fixed at 30), so the auto-close rules keep the
+# same reach; upstream's default is 90.
+time_trigger_lookback_days = 30
 
 [ai_agent]
 # Number of workers running autonomous AI assistant responses
