@@ -20,6 +20,7 @@ export const adminNavItems = [
       {
         titleKey: 'globals.terms.businessHour',
         href: '/admin/business-hours',
+        createRouteName: 'new-business-hours',
         permission: 'business_hours:manage',
         isTitleKeyPlural: true,
         icon: 'Clock'
@@ -27,6 +28,7 @@ export const adminNavItems = [
       {
         titleKey: 'globals.terms.slaPolicy',
         href: '/admin/sla',
+        createRouteName: 'new-sla',
         permission: 'sla:manage',
         isTitleKeyPlural: true,
         icon: 'Timer'
@@ -71,6 +73,13 @@ export const adminNavItems = [
         icon: 'NotebookText'
       },
       {
+        titleKey: 'admin.ai.editorPrompts',
+        href: '/admin/ai/editor-prompts',
+        permission: 'ai:manage',
+        isTitleKeyPlural: true,
+        icon: 'WandSparkles'
+      },
+      {
         titleKey: 'admin.ai.suggestions',
         href: '/admin/ai/suggestions',
         permission: 'ai:manage',
@@ -80,6 +89,7 @@ export const adminNavItems = [
       {
         titleKey: 'admin.ai.tools',
         href: '/admin/ai/tools',
+        createRouteName: 'new-ai-tool',
         permission: 'ai:manage',
         isTitleKeyPlural: true,
         icon: 'Wrench'
@@ -87,6 +97,7 @@ export const adminNavItems = [
       {
         titleKey: 'admin.ai.assistants',
         href: '/admin/ai/assistants',
+        createRouteName: 'new-ai-assistant',
         permission: 'ai:manage',
         isTitleKeyPlural: true,
         icon: 'Bot'
@@ -100,9 +111,16 @@ export const adminNavItems = [
       {
         titleKey: 'globals.terms.inbox',
         href: '/admin/inboxes',
+        createRouteName: 'new-inbox',
         permission: 'inboxes:manage',
         isTitleKeyPlural: true,
         icon: 'Inbox'
+      },
+      {
+        titleKey: 'admin.whatsappTemplates.title',
+        href: '/admin/whatsapp/templates',
+        permission: 'inboxes:manage',
+        icon: 'WhatsApp'
       }
     ]
   },
@@ -134,6 +152,7 @@ export const adminNavItems = [
       {
         titleKey: 'globals.terms.sharedView',
         href: '/admin/conversations/shared-views',
+        createRouteName: 'new-shared-view',
         permission: 'shared_views:manage',
         isTitleKeyPlural: true,
         icon: 'Eye'
@@ -146,6 +165,7 @@ export const adminNavItems = [
       {
         titleKey: 'globals.terms.macro',
         href: '/admin/conversations/macros',
+        createRouteName: 'new-macro',
         permission: 'macros:manage',
         isTitleKeyPlural: true,
         icon: 'Zap'
@@ -153,6 +173,7 @@ export const adminNavItems = [
       {
         titleKey: 'globals.terms.automation',
         href: '/admin/automations',
+        createRouteName: 'new-automation',
         permission: 'automations:manage',
         isTitleKeyPlural: true,
         icon: 'Workflow'
@@ -166,6 +187,7 @@ export const adminNavItems = [
       {
         titleKey: 'globals.terms.agent',
         href: '/admin/teams/agents',
+        createRouteName: 'new-agent',
         permission: 'users:manage',
         isTitleKeyPlural: true,
         icon: 'UserRound'
@@ -173,6 +195,7 @@ export const adminNavItems = [
       {
         titleKey: 'globals.terms.team',
         href: '/admin/teams/teams',
+        createRouteName: 'new-team',
         permission: 'teams:manage',
         isTitleKeyPlural: true,
         icon: 'UsersRound'
@@ -180,6 +203,7 @@ export const adminNavItems = [
       {
         titleKey: 'globals.terms.role',
         href: '/admin/teams/roles',
+        createRouteName: 'new-role',
         permission: 'roles:manage',
         isTitleKeyPlural: true,
         icon: 'Shield'
@@ -213,6 +237,7 @@ export const adminNavItems = [
       {
         titleKey: 'globals.terms.template',
         href: '/admin/templates',
+        createRouteName: 'new-template',
         permission: 'templates:manage',
         isTitleKeyPlural: true,
         icon: 'FileText'
@@ -225,6 +250,7 @@ export const adminNavItems = [
       {
         titleKey: 'globals.terms.sso',
         href: '/admin/sso',
+        createRouteName: 'new-sso',
         permission: 'oidc:manage',
         icon: 'KeyRound'
       }
@@ -237,6 +263,7 @@ export const adminNavItems = [
       {
         titleKey: 'globals.terms.webhook',
         href: '/admin/webhooks',
+        createRouteName: 'new-webhook',
         permission: 'webhooks:manage',
         isTitleKeyPlural: true,
         icon: 'Webhook'
@@ -244,6 +271,7 @@ export const adminNavItems = [
       {
         titleKey: 'globals.terms.contextLink',
         href: '/admin/context-links',
+        createRouteName: 'new-context-link',
         permission: 'context_links:manage',
         isTitleKeyPlural: true,
         icon: 'Link'
@@ -257,6 +285,12 @@ export const accountNavItems = [
     titleKey: 'globals.terms.profile',
     href: '/account/profile',
     icon: 'CircleUser'
+  },
+  {
+    titleKey: 'globals.terms.notification',
+    href: '/account/notifications',
+    isTitleKeyPlural: true,
+    icon: 'Bell'
   },
   // encatch: change your own password (features/encatch/password).
   {
