@@ -359,7 +359,7 @@ func (b *LibredeskBackend) Messages(uuid string, page, perPage int) ([]Message, 
 
 func (b *LibredeskBackend) CreateTicket(contactID int, subject, html string, attrs map[string]any, tags []string, files []Upload) (string, error) {
 	// Store files first, so a failed upload doesn't leave a ticket behind.
-	stored, err := b.storeUploads(files)
+	stored, err := b.storeUploads(contactID, files)
 	if err != nil {
 		return "", err
 	}
@@ -380,7 +380,7 @@ func (b *LibredeskBackend) CreateTicket(contactID int, subject, html string, att
 	}
 	// A contact message on a new conversation runs the same hooks as an incoming email:
 	// new-ticket automation rules (tier SLA, team assignment) and SLA tracking.
-	if _, err := b.Conversations.CreateContactMessage(stored, contactID, convUUID, html, cmodels.ContentTypeHTML, true); err != nil {
+	if _, err := b.Conversations.CreateContactMessage(stored, contactID, convUUID, html, cmodels.ContentTypeHTML, true, "", contactID); err != nil {
 		_ = b.Conversations.DeleteConversation(convUUID)
 		b.deleteUploads(stored)
 		return "", fmt.Errorf("creating first message: %w", err)
@@ -432,11 +432,11 @@ func (b *LibredeskBackend) addTags(convUUID string, tags []string) error {
 }
 
 func (b *LibredeskBackend) AddReply(contactID int, convUUID, html string, files []Upload) error {
-	stored, err := b.storeUploads(files)
+	stored, err := b.storeUploads(contactID, files)
 	if err != nil {
 		return err
 	}
-	if _, err := b.Conversations.CreateContactMessage(stored, contactID, convUUID, html, cmodels.ContentTypeHTML, false); err != nil {
+	if _, err := b.Conversations.CreateContactMessage(stored, contactID, convUUID, html, cmodels.ContentTypeHTML, false, "", contactID); err != nil {
 		b.deleteUploads(stored)
 		return fmt.Errorf("adding reply: %w", err)
 	}
@@ -500,11 +500,13 @@ func plainName(s string) string {
 
 // storeUploads saves customer files the way the agent app's media upload does
 // (cmd/media.go): private media rows named by UUID, with a thumbnail for images.
-// CreateContactMessage then links them to the message.
-func (b *LibredeskBackend) storeUploads(files []Upload) ([]mmodels.Media, error) {
+// They are recorded as uploaded by the contact, and CreateContactMessage (with the
+// contact as the actor) links them to the message: libredesk links only media uploaded
+// by the message's actor.
+func (b *LibredeskBackend) storeUploads(contactID int, files []Upload) ([]mmodels.Media, error) {
 	stored := make([]mmodels.Media, 0, len(files))
 	for _, f := range files {
-		m, err := b.storeUpload(f)
+		m, err := b.storeUpload(contactID, f)
 		if err != nil {
 			b.deleteUploads(stored)
 			return nil, err
@@ -514,7 +516,7 @@ func (b *LibredeskBackend) storeUploads(files []Upload) ([]mmodels.Media, error)
 	return stored, nil
 }
 
-func (b *LibredeskBackend) storeUpload(f Upload) (mmodels.Media, error) {
+func (b *LibredeskBackend) storeUpload(contactID int, f Upload) (mmodels.Media, error) {
 	if b.Media == nil {
 		return mmodels.Media{}, fmt.Errorf("attachments are not configured")
 	}
@@ -546,7 +548,7 @@ func (b *LibredeskBackend) storeUpload(f Upload) (mmodels.Media, error) {
 		return mmodels.Media{}, fmt.Errorf("uploading attachment: %w", err)
 	}
 	m, err := b.Media.Insert(null.StringFrom(attachment.DispositionAttachment), name, contentType, "",
-		null.String{}, id, null.Int{}, len(f.Data), meta, true /* private: signed links only */)
+		null.String{}, id, null.Int{}, len(f.Data), meta, true /* private: signed links only */, null.IntFrom(contactID))
 	if err != nil {
 		_ = b.Media.Delete(id)
 		if isImage {

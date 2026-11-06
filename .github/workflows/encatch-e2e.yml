@@ -69,15 +69,16 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25.0"
+          go-version: "1.27.3"
           cache-dependency-path: go.sum
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
 
+      # Same pnpm as frontend/package.json (upstream uses pnpm/action-setup, not in our allowlist).
       - name: Install pnpm
-        run: npm install -g pnpm@9.15.3
+        run: npm install -g pnpm@11.28.8
 
       - name: Cache pnpm store and Cypress binary
         uses: actions/cache@v4
@@ -111,6 +112,8 @@ jobs:
           LIBREDESK_APP__SERVER__DISABLE_SECURE_COOKIES: "true"
           LIBREDESK_RATE_LIMIT__WIDGET__REQUESTS_PER_MINUTE: "100000"
           LIBREDESK_RATE_LIMIT__PUBLIC__REQUESTS_PER_MINUTE: "100000"
+          # The WhatsApp suite drives the channel against the stand-in Graph API cypress starts.
+          LIBREDESK_WHATSAPP__API_URL: "http://127.0.0.1:9099"
           CYPRESS_SYSTEM_PASSWORD: "StrongPass!123"
           CYPRESS_MAILHOG_URL: "http://localhost:8025"
           SPECS: ${{ matrix.spec }}
@@ -118,6 +121,18 @@ jobs:
         run: |
           ./libredesk --install --idempotent-install --yes --config ./config.toml
           ./libredesk --upgrade --yes --config ./config.toml
+          # As upstream's frontend-ci.yml: fixtures simulate incoming messages through the
+          # contact writing permission.
+          docker exec -i '${{ job.services.db.id }}' psql -U libredesk -d libredesk -v ON_ERROR_STOP=1 <<'SQL'
+          WITH fixture_role AS (
+            INSERT INTO roles (name, description, permissions)
+            VALUES ('Cypress contact writer', 'Create incoming test messages', '{messages:write_as_contact}')
+            RETURNING id
+          )
+          INSERT INTO user_roles (user_id, role_id)
+          SELECT users.id, fixture_role.id FROM users CROSS JOIN fixture_role
+          WHERE users.email = 'System';
+          SQL
           ./libredesk --config ./config.toml &
           for i in $(seq 1 60); do
             if [ "$(curl --connect-timeout 1 --max-time 2 -s -o /dev/null -w '%{http_code}' http://localhost:9000/ || true)" = "200" ]; then

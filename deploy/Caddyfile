@@ -7,7 +7,8 @@
 	}
 
 	# The agent app may not be framed by other sites (clickjacking). Upstream sets the same
-	# headers on the app page from v2.9.0 (serveIndexPage); this can go after that merge.
+	# headers on the app page itself since v2.9.0 (serveIndexPage); this rule sends the same
+	# values (Caddy replaces, so no duplicates) and also covers libredesk's other HTML pages.
 	# The chat widget, help center and CSAT pages are embedded or linked elsewhere and stay
 	# frameable; My Tickets sends its own stricter frame-ancestors 'none'.
 	@agentApp not path /widget /widget/* /widget.js /hc /hc/* /csat/* /my-tickets /my-tickets/*

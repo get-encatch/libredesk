@@ -35,7 +35,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25.0"
+          go-version: "1.27.3"
           cache: false
 
       - name: Restore Go build cache
@@ -50,11 +50,12 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
-          # encatch: 22 (was 20): the My Tickets app builds with pnpm 11, which needs 22.13+.
-          node-version: "22"
+          node-version: "24"
 
+      # encatch: install pnpm with npm (upstream uses pnpm/action-setup, which our
+      # Actions allowlist doesn't include); same version as frontend/package.json.
       - name: Install pnpm
-        run: npm install -g pnpm@9.15.3
+        run: npm install -g pnpm@11.28.8
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v5
@@ -63,4 +64,5 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
           GITHUB_ORG: ${{ github.repository_owner }}
