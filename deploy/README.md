@@ -60,9 +60,13 @@ repo and a deploy doesn't remove them. An empty folder is fine.
 ### Monitoring (Gatus)
 
 `internal-status.encatch.com` is a private status page with alerts to Zoho Cliq (channel
-`argocdalerts`), from [Gatus](https://github.com/TwiN/gatus) pinned to `v5.37.0`
-(`ghcr.io/twin/gatus`). Compose project `/srv/gatus`, service and container `gatus`, 128 MB cap,
-history in SQLite (`/srv/gatus/data`), no database server.
+`argocdalerts`), from our Gatus fork [get-encatch/gatus](https://github.com/get-encatch/gatus),
+image `ghcr.io/get-encatch/gatus:v5.38.0-encatch.2` (since 2026-11-18; before that upstream's
+`ghcr.io/twin/gatus:v5.37.0`). The fork is upstream v5.38.0 plus the unmerged upstream PR
+[TwiN/gatus#1825](https://github.com/TwiN/gatus/pull/1825), which lets conditions read response
+headers (`[HEADER].<name>`); its `ENCATCH.md` says how to update it, and to go back to upstream once
+header support is merged there. Compose project `/srv/gatus`, service and container `gatus`, 128 MB
+cap, history in SQLite (`/srv/gatus/data`), no database server.
 
 - Checks live in `/srv/gatus/config/config.yaml`; Gatus reloads it on save. Each endpoint has a
   URL, an interval and conditions (`[STATUS] == 200`, `[RESPONSE_TIME] < 5000`,
@@ -71,7 +75,15 @@ history in SQLite (`/srv/gatus/data`), no database server.
   Each alert is a Cliq message card from "Encatch Monitor": a table (check, URL, alert text,
   condition results, errors) and buttons to the status page and the checked URL. Gatus inserts
   values into that JSON as-is (it escapes only double quotes in errors), so **alert
-  descriptions must not contain double quotes**, or the card fails to send.
+  descriptions must not contain double quotes**, or the card fails to send. The same goes for
+  **conditions**: their text goes into the card unescaped.
+- Trace id in alerts: the form checks (Form show and both Form submit flow steps) have the condition
+  `[HEADER].X-Encatch-Id != none` with `ui.resolve-successful-conditions: true`. It always passes
+  (a missing header shows as `(INVALID)`) and puts the response's `X-Encatch-Id` into the card's
+  Conditions row, e.g. `[HEADER].X-Encatch-Id (d6be2842…) != none`, to find the production trace.
+  Don't compare it with `pat(...)`: Gatus cuts such values to 25 characters.
+- Suite steps don't get `default-alert` (Gatus applies it to plain endpoints only), so each suite
+  step alert sets its own thresholds and `send-on-resolved: true`, or recoveries aren't sent.
 - Secrets are set on the server by prompt, never in this repo or a command line:
   `/srv/gatus/set-cliq-key.sh` (the webhook's `zapikey`, into `/srv/gatus/.env`) and
   `/srv/gatus/set-login.sh` (username and password; Caddy stores only a bcrypt hash in
